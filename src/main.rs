@@ -8,25 +8,44 @@ mod systable;
 
 fn main() {
     println!("lkdiff: ...");
-    let first = "/tmp/qemu.log.lk";
-    parse(first).expect("{first} is a bad file.");
+    let first = "/tmp/linux.log";
+    parse(first).expect("refer-file is a bad file.");
     println!("lkdiff: ok!");
 }
+
+const IN: usize = 0;
+const OUT: usize = 1;
+const USER_ECALL: usize = 8;
 
 fn parse(fname: &str) -> Result<()> {
     let f = File::open(fname)?;
     let mut reader = BufReader::new(f);
 
+    let mut events = vec![];
     let mut line = String::new();
-    reader.read_line(&mut line)?;
-    assert!(line.starts_with("in: "));
-    let evt = Event::parse(&line[4..].trim());
-    println!("evt: {}", evt);
+    let mut wait_reply = false;
+    while reader.read_line(&mut line)? != 0 {
+        let evt = Event::parse(line.trim());
+        println!("evt: {}", evt);
+        if wait_reply {
+            assert_eq!(evt.inout, OUT);
+            let last: &Event = events.last().expect("No requests in event queue!");
+            assert_eq!(evt.epc, last.epc + 4);
+            assert_eq!(wait_reply, true);
+            wait_reply = false;
+        } else if evt.cause == USER_ECALL && evt.inout == IN {
+            events.push(evt);
+            assert_eq!(wait_reply, false);
+            wait_reply = true;
+        }
+        line.clear();
+    }
     Ok(())
 }
 
 struct Event {
-    tp: usize,
+    inout: usize,
+    cause: usize,
     epc: usize,
     sysno: usize,
     syscall: String,
@@ -36,28 +55,39 @@ struct Event {
 
 impl Display for Event {
     fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
-        write!(fmt, "{}()", self.syscall)
+        let args = self.args.iter().map(|item|
+            format!("{:#x}", item)
+        ).collect::<Vec<_>>().join(", ");
+
+        write!(fmt, "[{}]{}({}), usp: {:#x}",
+            self.sysno, self.syscall, args, self.usp)
     }
 }
 
 impl Event {
-    /// Format: tp|epc|sysno(a7)|a0|..|a6
+    /// Format: [0|1]|cause|epc|sysno(a7)|a0|..|a6
     fn parse(line: &str) -> Self {
-        println!("line: {}", line);
+        //println!("line: {}", line);
         let fields: Vec<_> = line.split('|').map(|item|
             usize::from_str_radix(item, 16).unwrap()
         ).collect();
-        println!("parsed: {:?}", &fields[3..10]);
+        //println!("parsed: {:?}", &fields[2..9]);
 
-        let sysno = fields[2];
-        let syscall = systable::name(sysno);
+        let cause = fields[1];
+        let sysno = fields[3];
+        let syscall = if cause == USER_ECALL {
+            systable::name(sysno)
+        } else {
+            "irq"
+        };
 
         Event {
-            tp: fields[0],
-            epc: fields[1],
+            inout: fields[0],
+            cause: cause,
+            epc: fields[2],
             sysno,
             syscall: syscall.to_string(),
-            args: fields[3..10].to_vec(),
+            args: fields[4..11].to_vec(),
             usp: 0,
         }
     }
