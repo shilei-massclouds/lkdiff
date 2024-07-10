@@ -32,9 +32,24 @@ pub struct TraceEvent {
 impl TraceEvent {
     pub fn handle_syscall(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         match self.head.ax[7] {
-            0x38 => {
-                self.do_openat(args)
-            },
+            0x1d => ("ioctl", 7, format!("{:#x}", self.result)),
+            0x30 => ("faccessat", 7, format!("{:#x}", self.result)),
+            0x38 => self.do_openat(args),
+            0x39 => ("close", 7, format!("{:#x}", self.result)),
+            0x3f => ("read", 7, format!("{:#x}", self.result)),
+            0x40 => ("write", 7, format!("{:#x}", self.result)),
+            0x4f => ("fstatat", 7, format!("{:#x}", self.result)),
+            0x5e => ("exit_group", 7, format!("{:#x}", self.result)),
+            0x60 => ("set_tid_address", 7, format!("{:#x}", self.result)),
+            0x63 => ("set_robust_list", 7, format!("{:#x}", self.result)),
+            0x71 => ("clock_gettime", 7, format!("{:#x}", self.result)),
+            0xa0 => ("uname", 7, format!("{:#x}", self.result)),
+            0xd6 => ("brk", 7, format!("{:#x}", self.result)),
+            0xde => ("mmap", 7, format!("{:#x}", self.result)),
+            0xe2 => ("mprotect", 7, format!("{:#x}", self.result)),
+
+            0x105 => ("prlimit64", 7, format!("{:#x}", self.result)),
+            0x116 => ("getrandom", 7, format!("{:#x}", self.result)),
             _ => {
                 ("[unknown sysno]", 7, format!("{:#x}", self.result))
             },
@@ -42,18 +57,16 @@ impl TraceEvent {
     }
 
     fn do_openat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
-        assert_eq!(self.payloads.len(), 1);
         if self.head.ax[0] == AT_FDCWD {
             args[0] = "AT_FDCWD".to_string();
         }
-        for payload in &self.payloads {
-            // argc: 4: dfd fname flags mode
-            assert_eq!(payload.index, 1);
-            let fname = CStr::from_bytes_until_nul(&payload.data).unwrap();
-            let fname = format!("\"{}\"", fname.to_str().unwrap());
-            println!("fname {}", fname);
-            args[payload.index] = fname.to_string();
-        }
+        assert_eq!(self.payloads.len(), 1);
+        let payload = &self.payloads.first().unwrap();
+        // argc: 4: dfd fname flags mode
+        assert_eq!(payload.index, 1);
+        let fname = CStr::from_bytes_until_nul(&payload.data).unwrap();
+        let fname = format!("\"{}\"", fname.to_str().unwrap());
+        args[payload.index] = fname.to_string();
 
         ("openat", 4, format!("{:#x}", self.result))
     }
@@ -75,30 +88,5 @@ impl Display for TraceEvent {
 }
 
 /*
-pub fn name(sysno: u64) -> &'static str {
-    match sysno {
-        0x1d => "ioctl",
-        0x30 => "faccessat",
-        0x38 => "openat",
-        0x39 => "close",
-        0x3f => "read",
-        0x40 => "write",
-        0x4f => "fstatat",
-        0x5e => "exit_group",
-        0x60 => "set_tid_address",
-        0x63 => "set_robust_list",
-        0x71 => "clock_gettime",
-        0xa0 => "uname",
-        0xd6 => "brk",
-        0xde => "mmap",
-        0xe2 => "mprotect",
-
-        0x105 => "prlimit64",
-        0x116 => "getrandom",
-        _ => {
-            panic!("unknown sysno: {}, {:#x}", sysno, sysno);
-            //"[unknown sysno]"
-        },
-    }
-}
+panic!("unknown sysno: {}, {:#x}", sysno, sysno);
 */
