@@ -1,6 +1,6 @@
 //! Query syscall name based on sysno
 
-pub fn name(sysno: usize) -> &'static str {
+pub fn name(sysno: u64) -> &'static str {
     match sysno {
         0x1d => "ioctl",
         0x30 => "faccessat",
