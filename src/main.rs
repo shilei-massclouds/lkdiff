@@ -3,61 +3,24 @@ use std::fs::File;
 use std::io::Result;
 use std::io::BufReader;
 use std::mem;
-use std::fmt::{Display, Formatter};
+use event::{TraceHead, TracePayload, TraceEvent, USER_ECALL};
 
-mod systable;
+mod event;
 
 const REFERENCE: &str = "/tmp/lk_trace.data";
 
 const IN: u64 = 0;
 const OUT: u64 = 1;
-const USER_ECALL: u64 = 8;
 
 const LK_MAGIC: u16 = 0xABCD;
 const TE_SIZE: usize = mem::size_of::<TraceHead>();
 const PH_SIZE: usize = mem::size_of::<PayloadHead>();
 
 #[repr(C)]
-struct TraceHead {
-    magic: u16,
-    headsize: u16,
-    totalsize: u32,
-    inout: u64,
-    cause: u64,
-    epc: u64,
-    ax: [u64; 8],
-}
-
-struct TracePayload {
-    index: usize,
-    data: Vec<u8>,
-}
-
-struct TraceEvent {
-    head: TraceHead,
-    payloads: Vec<TracePayload>,
-}
-
-#[repr(C)]
 struct PayloadHead {
     magic: u16,
     index: u16,
     size: u32,
-}
-
-impl Display for TraceEvent {
-    fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
-        let args = self.head.ax[..7].iter().map(|arg|
-            format!("{:#x}", arg)
-        ).collect::<Vec<_>>().join(", ");
-
-        let syscall = if self.head.cause == USER_ECALL {
-            systable::name(self.head.ax[7])
-        } else {
-            "irq"
-        };
-        write!(fmt, "[{}]{}({}), usp: 0x0", self.head.ax[7], syscall, args)
-    }
 }
 
 fn main() {
@@ -83,9 +46,10 @@ fn parse_file(fname: &str) -> Result<()> {
             wait_reply = false;
 
             assert_eq!(evt.head.inout, OUT);
-            let last: &TraceEvent = events.last().expect("No requests in event queue!");
+            let last: &mut TraceEvent = events.last_mut().expect("No requests in event queue!");
             assert_eq!(evt.head.epc, last.head.epc + 4);
             assert_eq!(evt.head.ax[7], last.head.ax[7]);
+            last.result = evt.head.ax[0];
             println!("{}", last);
         } else if evt.head.cause == USER_ECALL && evt.head.inout == IN {
             assert_eq!(wait_reply, false);
@@ -114,6 +78,7 @@ fn parse_event(reader: &mut BufReader<File>) -> Result<TraceEvent> {
 
     let evt = TraceEvent {
         head,
+        result: 0,
         payloads,
     };
     Ok(evt)
