@@ -3,11 +3,10 @@ use std::fs::File;
 use std::io::Result;
 use std::io::BufReader;
 use std::mem;
+use std::env;
 use event::{TraceHead, TracePayload, TraceEvent, USER_ECALL};
 
 mod event;
-
-const REFERENCE: &str = "/tmp/lk_trace.data";
 
 const IN: u64 = 0;
 const OUT: u64 = 1;
@@ -24,7 +23,9 @@ struct PayloadHead {
 }
 
 fn main() {
-    parse_file(REFERENCE).expect("reference is a bad file.");
+    let args: Vec<String> = env::args().collect();
+    let rfile = &args[1];
+    parse_file(rfile).expect("reference is a bad file.");
 }
 
 fn parse_file(fname: &str) -> Result<()> {
