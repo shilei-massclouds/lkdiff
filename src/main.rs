@@ -24,6 +24,10 @@ struct PayloadHead {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
+    if args.len() != 2 {
+        println!("Usage: lkdiff [trace.data]");
+        return;
+    }
     let rfile = &args[1];
     parse_file(rfile).expect("reference is a bad file.");
 }
