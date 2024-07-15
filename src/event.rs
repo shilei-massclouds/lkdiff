@@ -47,12 +47,12 @@ impl TraceEvent {
     pub fn handle_syscall(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         match self.head.ax[7] {
             0x1d => ("ioctl", 7, format!("{:#x}", self.result)),
-            0x30 => ("faccessat", 7, format!("{:#x}", self.result)),
+            0x30 => self.do_faccessat(args),
             0x38 => self.do_openat(args),
             0x39 => ("close", 7, format!("{:#x}", self.result)),
             0x3f => ("read", 7, format!("{:#x}", self.result)),
             0x40 => ("write", 7, format!("{:#x}", self.result)),
-            0x4f => ("fstatat", 7, format!("{:#x}", self.result)),
+            0x4f => self.do_fstatat(args),
             0x5e => ("exit_group", 7, format!("{:#x}", self.result)),
             0x60 => ("set_tid_address", 7, format!("{:#x}", self.result)),
             0x63 => ("set_robust_list", 7, format!("{:#x}", self.result)),
@@ -72,23 +72,47 @@ impl TraceEvent {
 
     #[inline]
     fn do_common(&self, name: &'static str, argc: usize) -> (&'static str, usize, String) {
-        (name, argc, format!("{:#x}", self.result))
+        if (self.result as i64) <= 0 {
+            (name, argc, format!("{}", errno_name(self.result as i32)))
+        } else {
+            (name, argc, format!("{:#x}", self.result))
+        }
+    }
+
+    fn do_path(&self, args: &mut Vec<String>) {
+        assert_eq!(self.payloads.len(), 1);
+        let payload = &self.payloads.first().unwrap();
+        assert_eq!(payload.inout, crate::IN);
+        assert_eq!(payload.index, 1);
+        let fname = CStr::from_bytes_until_nul(&payload.data).unwrap();
+        let fname = format!("\"{}\"", fname.to_str().unwrap());
+        args[payload.index] = fname.to_string();
     }
 
     fn do_openat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         if self.head.ax[0] == AT_FDCWD {
             args[0] = "AT_FDCWD".to_string();
         }
-        assert_eq!(self.payloads.len(), 1);
-        let payload = &self.payloads.first().unwrap();
-        // argc: 4: dfd fname flags mode
-        assert_eq!(payload.inout, crate::IN);
-        assert_eq!(payload.index, 1);
-        let fname = CStr::from_bytes_until_nul(&payload.data).unwrap();
-        let fname = format!("\"{}\"", fname.to_str().unwrap());
-        args[payload.index] = fname.to_string();
+        self.do_path(args);
+        self.do_common("openat", 4)
+    }
 
-        ("openat", 4, format!("{}", errno_name(self.result as i32)))
+    fn do_faccessat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        if self.head.ax[0] == AT_FDCWD {
+            args[0] = "AT_FDCWD".to_string();
+        }
+        self.do_path(args);
+        // For faccessat, there're 3 args, NO 'flags'.
+        // For faccessat2, there're 4 args with 'flags'.
+        self.do_common("faccessat", 3)
+    }
+
+    fn do_fstatat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        if self.head.ax[0] == AT_FDCWD {
+            args[0] = "AT_FDCWD".to_string();
+        }
+        self.do_path(args);
+        self.do_common("fstatat", 4)
     }
 
     fn do_uname(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
