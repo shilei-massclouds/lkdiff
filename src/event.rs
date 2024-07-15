@@ -43,27 +43,51 @@ struct UTSName {
 }
 const UTSNAME_SIZE: usize = mem::size_of::<UTSName>();
 
+#[derive(Debug)]
+#[repr(C)]
+pub struct KStat {
+    st_dev: u64,
+    st_ino: u64,
+    st_mode: u32,
+    st_nlink: u32,
+    st_uid: u32,
+    st_gid: u32,
+    st_rdev: u64,
+    _pad0: u64,
+    st_size: u64,
+    st_blksize: u32,
+    _pad1: u32,
+    st_blocks: u64,
+    st_atime_sec: isize,
+    st_atime_nsec: isize,
+    st_mtime_sec: isize,
+    st_mtime_nsec: isize,
+    st_ctime_sec: isize,
+    st_ctime_nsec: isize,
+}
+const KSTAT_SIZE: usize = mem::size_of::<KStat>();
+
 impl TraceEvent {
     pub fn handle_syscall(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         match self.head.ax[7] {
-            0x1d => ("ioctl", 7, format!("{:#x}", self.result)),
+            0x1d => self.do_common("ioctl", 3),
             0x30 => self.do_faccessat(args),
             0x38 => self.do_openat(args),
-            0x39 => ("close", 7, format!("{:#x}", self.result)),
-            0x3f => ("read", 7, format!("{:#x}", self.result)),
-            0x40 => ("write", 7, format!("{:#x}", self.result)),
+            0x39 => self.do_common("close", 1),
+            0x3f => self.do_common("read", 3),
+            0x40 => self.do_common("write", 3),
             0x4f => self.do_fstatat(args),
             0x5e => ("exit_group", 7, format!("{:#x}", self.result)),
-            0x60 => ("set_tid_address", 7, format!("{:#x}", self.result)),
-            0x63 => ("set_robust_list", 7, format!("{:#x}", self.result)),
-            0x71 => ("clock_gettime", 7, format!("{:#x}", self.result)),
+            0x60 => self.do_common("set_tid_address", 1),
+            0x63 => self.do_common("set_robust_list", 2),
+            0x71 => self.do_common("clock_gettime", 2),
             0xa0 => self.do_uname(args),
             0xd6 => self.do_common("brk", 1),
-            0xde => ("mmap", 7, format!("{:#x}", self.result)),
-            0xe2 => ("mprotect", 7, format!("{:#x}", self.result)),
+            0xde => self.do_common("mmap", 6),
+            0xe2 => self.do_common("mprotect", 3),
 
-            0x105 => ("prlimit64", 7, format!("{:#x}", self.result)),
-            0x116 => ("getrandom", 7, format!("{:#x}", self.result)),
+            0x105 => self.do_common("prlimit64", 4),
+            0x116 => self.do_common("getrandom", 3),
             _ => {
                 ("[unknown sysno]", 7, format!("{:#x}", self.result))
             },
@@ -80,7 +104,7 @@ impl TraceEvent {
     }
 
     fn do_path(&self, args: &mut Vec<String>) {
-        assert_eq!(self.payloads.len(), 1);
+        assert!(self.payloads.len() >= 1);
         let payload = &self.payloads.first().unwrap();
         assert_eq!(payload.inout, crate::IN);
         assert_eq!(payload.index, 1);
@@ -112,7 +136,28 @@ impl TraceEvent {
             args[0] = "AT_FDCWD".to_string();
         }
         self.do_path(args);
+        if self.result == 0 {
+            assert_eq!(self.payloads.len(), 2);
+            for payload in &self.payloads {
+                if payload.index == 2 {
+                    args[payload.index] = self.handle_stat(payload);
+                }
+            }
+        }
         self.do_common("fstatat", 4)
+    }
+
+    fn handle_stat(&self, payload: &TracePayload) -> String {
+        assert_eq!(payload.inout, crate::OUT);
+        assert_eq!(payload.index, 2);
+        let mut buf = [0u8; KSTAT_SIZE];
+        buf.clone_from_slice(&payload.data[..KSTAT_SIZE]);
+
+        let k = unsafe {
+            mem::transmute::<[u8; KSTAT_SIZE], KStat>(buf)
+        };
+        format!("{{dev={:#x}, ino={}, mode={:#o}, nlink={}, rdev={}, size={}, blksize={}, blocks={}}}",
+            k.st_dev, k.st_ino, k.st_mode, k.st_nlink, k.st_rdev, k.st_size, k.st_blksize, k.st_blocks)
     }
 
     fn do_uname(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
