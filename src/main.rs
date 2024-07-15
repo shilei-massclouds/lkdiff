@@ -7,6 +7,7 @@ use std::env;
 use event::{TraceHead, TracePayload, TraceEvent, USER_ECALL};
 
 mod event;
+mod errno;
 
 const IN: u64 = 0;
 const OUT: u64 = 1;
@@ -40,7 +41,7 @@ fn parse_file(fname: &str) -> Result<()> {
     let mut wait_reply = false;
     let mut events = vec![];
     while filesize >= TE_SIZE {
-        let evt = parse_event(&mut reader)?;
+        let mut evt = parse_event(&mut reader)?;
         let advance = evt.head.totalsize as usize;
         assert_eq!(evt.head.magic, LK_MAGIC);
         assert_eq!(evt.head.headsize, TE_SIZE as u16);
@@ -55,6 +56,7 @@ fn parse_file(fname: &str) -> Result<()> {
             assert_eq!(evt.head.epc, last.head.epc + 4);
             assert_eq!(evt.head.ax[7], last.head.ax[7]);
             last.result = evt.head.ax[0];
+            last.payloads.append(&mut evt.payloads);
             println!("{}", last);
         } else if evt.head.cause == USER_ECALL && evt.head.inout == IN {
             assert_eq!(wait_reply, false);
@@ -76,7 +78,7 @@ fn parse_event(reader: &mut BufReader<File>) -> Result<TraceEvent> {
     };
 
     let payloads = if head.totalsize as usize > head.headsize as usize {
-        parse_payloads(reader, head.totalsize as usize - head.headsize as usize)?
+        parse_payloads(reader, head.inout, head.totalsize as usize - head.headsize as usize)?
     } else {
         vec![]
     };
@@ -89,24 +91,31 @@ fn parse_event(reader: &mut BufReader<File>) -> Result<TraceEvent> {
     Ok(evt)
 }
 
-fn parse_payloads(reader: &mut BufReader<File>, size: usize) -> Result<Vec<TracePayload>> {
+fn parse_payloads(reader: &mut BufReader<File>, inout: u64, size: usize) -> Result<Vec<TracePayload>> {
     assert!(size > PH_SIZE);
+    let mut ret = vec![];
+    let mut size = size - PH_SIZE;
+    while size > 0 {
+        let payload = parse_payload(reader, inout)?;
+        size -= payload.data.len();
+        ret.push(payload);
+    }
+    Ok(ret)
+}
+
+fn parse_payload(reader: &mut BufReader<File>, inout: u64) -> Result<TracePayload> {
     let mut buf = [0u8; PH_SIZE];
     reader.read_exact(&mut buf)?;
     let head = unsafe {
         mem::transmute::<[u8; PH_SIZE], PayloadHead>(buf)
     };
-    let mut data = Vec::with_capacity(size - PH_SIZE);
-    unsafe { data.set_len(size - PH_SIZE); }
+    let mut data = Vec::with_capacity(head.size as usize);
+    unsafe { data.set_len(head.size as usize); }
     reader.read_exact(&mut data)?;
-    /*
-    panic!("maigc {:#x} index {} size {}, data {:?}",
-           head.magic, head.index, head.size, data);
-           */
 
-    let payload = TracePayload {
+    Ok(TracePayload {
+        inout: inout,
         index: head.index as usize,
         data,
-    };
-    Ok(vec![payload])
+    })
 }
