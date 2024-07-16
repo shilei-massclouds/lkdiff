@@ -106,7 +106,7 @@ impl TraceEvent {
     fn do_path(&self, args: &mut Vec<String>) {
         assert!(self.payloads.len() >= 1);
         let payload = &self.payloads.first().unwrap();
-        assert_eq!(payload.inout, crate::IN);
+        //assert_eq!(payload.inout, crate::IN);
         assert_eq!(payload.index, 1);
         let fname = CStr::from_bytes_until_nul(&payload.data).unwrap();
         let fname = format!("\"{}\"", fname.to_str().unwrap());

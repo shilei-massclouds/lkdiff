@@ -51,18 +51,23 @@ fn parse_file(fname: &str) -> Result<()> {
             assert_eq!(wait_reply, true);
             wait_reply = false;
 
+            assert_eq!(evt.head.cause, USER_ECALL);
             assert_eq!(evt.head.inout, OUT);
             let last: &mut TraceEvent = events.last_mut().expect("No requests in event queue!");
             assert_eq!(evt.head.epc, last.head.epc + 4);
             assert_eq!(evt.head.ax[7], last.head.ax[7]);
             last.result = evt.head.ax[0];
             last.payloads.append(&mut evt.payloads);
+            //println!("replay: {}", last);
             println!("{}", last);
         } else if evt.head.cause == USER_ECALL && evt.head.inout == IN {
             assert_eq!(wait_reply, false);
             wait_reply = true;
 
+            //println!("request: {}", evt.head.ax[7]);
             events.push(evt);
+        } else {
+            panic!("irq: {}", evt.head.ax[7]);
         }
 
         filesize -= advance;
@@ -77,6 +82,7 @@ fn parse_event(reader: &mut BufReader<File>) -> Result<TraceEvent> {
         mem::transmute::<[u8; TE_SIZE], TraceHead>(buf)
     };
 
+    //println!("a7: {} total: {}", head.ax[7], head.totalsize);
     let payloads = if head.totalsize as usize > head.headsize as usize {
         parse_payloads(reader, head.inout, head.totalsize as usize - head.headsize as usize)?
     } else {
@@ -91,13 +97,12 @@ fn parse_event(reader: &mut BufReader<File>) -> Result<TraceEvent> {
     Ok(evt)
 }
 
-fn parse_payloads(reader: &mut BufReader<File>, inout: u64, size: usize) -> Result<Vec<TracePayload>> {
+fn parse_payloads(reader: &mut BufReader<File>, inout: u64, mut size: usize) -> Result<Vec<TracePayload>> {
     assert!(size > PH_SIZE);
     let mut ret = vec![];
-    let mut size = size - PH_SIZE;
     while size > 0 {
         let payload = parse_payload(reader, inout)?;
-        size -= payload.data.len();
+        size -= PH_SIZE + payload.data.len();
         ret.push(payload);
     }
     Ok(ret)
