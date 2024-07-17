@@ -109,8 +109,15 @@ impl TraceEvent {
         //assert_eq!(payload.inout, crate::IN);
         assert_eq!(payload.index, 1);
         let fname = CStr::from_bytes_until_nul(&payload.data).unwrap();
-        let fname = format!("\"{}\"", fname.to_str().unwrap());
-        args[payload.index] = fname.to_string();
+        let fname = match fname.to_str() {
+            Ok(name) => {
+                format!("\"{}\"", name)
+            },
+            Err(_) => {
+                "[!parse_str_err!]".to_string()
+            },
+        };
+        args[payload.index] = fname;
     }
 
     fn do_openat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
