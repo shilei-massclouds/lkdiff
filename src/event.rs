@@ -4,6 +4,7 @@ use std::ffi::CStr;
 use std::fmt::{Display, Formatter};
 use std::mem;
 use crate::errno::errno_name;
+use crate::mmap::{map_name, prot_name};
 
 pub const USER_ECALL: u64 = 8;
 
@@ -12,11 +13,15 @@ const AT_FDCWD: u64 = -100i64 as u64;
 #[repr(C)]
 pub struct TraceHead {
     pub magic: u16,
+    /// TraceHead size
     pub headsize: u16,
+    /// TraceEvent size
     pub totalsize: u32,
+    /// in/out 1/0
     pub inout: u64,
     pub cause: u64,
     pub epc: u64,
+    /// riscv a0-a7
     pub ax: [u64; 8],
     pub usp: u64,
     pub stack: [u64; 8],
@@ -83,7 +88,7 @@ impl TraceEvent {
             0x71 => self.do_common("clock_gettime", 2),
             0xa0 => self.do_uname(args),
             0xd6 => self.do_common("brk", 1),
-            0xde => self.do_common("mmap", 6),
+            0xde => self.do_mmap(args),
             0xe2 => self.do_common("mprotect", 3),
 
             0x105 => self.do_common("prlimit64", 4),
@@ -174,7 +179,7 @@ impl TraceEvent {
         assert_eq!(payload.index, 0);
         let mut buf = [0u8; UTSNAME_SIZE];
         buf.clone_from_slice(&payload.data[..UTSNAME_SIZE]);
-
+        
         let utsname = unsafe {
             mem::transmute::<[u8; UTSNAME_SIZE], UTSName>(buf)
         };
@@ -187,6 +192,20 @@ impl TraceEvent {
         let r_uname = names.join(", ");
         args[payload.index] = format!("{{{}}}", r_uname);
         ("uname", 1, format!("{:#x}", self.result))
+    }
+
+    fn do_mmap(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        if self.head.ax[0] == 0 {
+            args[0] = String::from("NULL");
+        }
+        args[2] = prot_name(self.head.ax[2]);
+        args[3] = map_name(self.head.ax[3]);
+        args[4] = format!("{}",self.head.ax[4] as isize);// fd
+        if (self.result as i64) <= 0 {
+            ("mmap", 6, String::from("MAP_FAILED")) // On error, the value MAP_FAILED(that is, (void *) -1) is returned,
+        } else {
+            ("mmap", 6, format!("{:#x}", self.result)) // On success, mmap() returns a pointer to the mapped area. 
+        }
     }
 }
 

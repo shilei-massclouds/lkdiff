@@ -8,6 +8,7 @@ use event::{TraceHead, TracePayload, TraceEvent, USER_ECALL};
 
 mod event;
 mod errno;
+mod mmap;
 
 const IN: u64 = 0;
 const OUT: u64 = 1;
@@ -48,7 +49,7 @@ fn parse_file(fname: &str) -> Result<()> {
         assert!(evt.head.totalsize >= evt.head.headsize as u32);
         //println!("{}: [{:#x}, {:#x}, {:#x}]", evt.inout, evt.cause, evt.epc, evt.ax[7]);
         if wait_reply {
-            assert_eq!(wait_reply, true);
+            assert!(wait_reply);
             wait_reply = false;
 
             assert_eq!(evt.head.cause, USER_ECALL);
