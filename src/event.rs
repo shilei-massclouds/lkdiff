@@ -5,6 +5,7 @@ use std::fmt::{Display, Formatter};
 use std::mem;
 use crate::errno::errno_name;
 use crate::mmap::{map_name, prot_name};
+use crate::sysno::*;
 
 pub const USER_ECALL: u64 = 8;
 
@@ -75,24 +76,24 @@ const KSTAT_SIZE: usize = mem::size_of::<KStat>();
 impl TraceEvent {
     pub fn handle_syscall(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         match self.head.ax[7] {
-            0x1d => self.do_common("ioctl", 3),
-            0x30 => self.do_faccessat(args),
-            0x38 => self.do_openat(args),
-            0x39 => self.do_common("close", 1),
-            0x3f => self.do_common("read", 3),
-            0x40 => self.do_common("write", 3),
-            0x4f => self.do_fstatat(args),
-            0x5e => ("exit_group", 7, format!("{:#x}", self.result)),
-            0x60 => self.do_common("set_tid_address", 1),
-            0x63 => self.do_common("set_robust_list", 2),
-            0x71 => self.do_common("clock_gettime", 2),
-            0xa0 => self.do_uname(args),
-            0xd6 => self.do_common("brk", 1),
-            0xde => self.do_mmap(args),
-            0xe2 => self.do_common("mprotect", 3),
+            LINUX_SYSCALL_IOCTL => self.do_common("ioctl", 3),
+            LINUX_SYSCALL_FACCESSAT => self.do_faccessat(args),
+            LINUX_SYSCALL_OPENAT => self.do_openat(args),
+            LINUX_SYSCALL_CLOSE => self.do_common("close", 1),
+            LINUX_SYSCALL_READ => self.do_common("read", 3),
+            LINUX_SYSCALL_WRITE => self.do_write(args),
+            LINUX_SYSCALL_FSTATAT => self.do_fstatat(args),
+            LINUX_SYSCALL_EXIT_GROUP => ("exit_group", 7, format!("{:#x}", self.result)),
+            LINUX_SYSCALL_SET_TID_ADDRESS => self.do_common("set_tid_address", 1),
+            LINUX_SYSCALL_SET_ROBUST_LIST => self.do_common("set_robust_list", 2),
+            LINUX_SYSCALL_CLOCK_GETTIME => self.do_common("clock_gettime", 2),
+            LINUX_SYSCALL_UNAME => self.do_uname(args),
+            LINUX_SYSCALL_BRK => self.do_common("brk", 1),
+            LINUX_SYSCALL_MMAP => self.do_mmap(args),
+            LINUX_SYSCALL_MPROTECT => self.do_common("mprotect", 3),
 
-            0x105 => self.do_common("prlimit64", 4),
-            0x116 => self.do_common("getrandom", 3),
+            LINUX_SYSCALL_PRLIMIT64 => self.do_common("prlimit64", 4),
+            LINUX_SYSCALL_GETRANDOM => self.do_common("getrandom", 3),
             _ => {
                 ("[unknown sysno]", 7, format!("{:#x}", self.result))
             },
@@ -206,6 +207,24 @@ impl TraceEvent {
         } else {
             ("mmap", 6, format!("{:#x}", self.result)) // On success, mmap() returns a pointer to the mapped area. 
         }
+    }
+
+    fn do_write(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        assert_eq!(self.payloads.len(), 1);
+        let payload = &self.payloads.first().unwrap();
+        assert_eq!(payload.inout, crate::OUT);
+        assert_eq!(payload.index, 1);
+        args[0] = format!("{}",self.head.ax[0] as isize);// fd
+        args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
+            Ok(content) => {
+                format!("{:?}", content)
+            },
+            Err(_) => {
+                "[!parse_str_err!]".to_string()
+            },
+        };
+        
+        ("write",3,format!("{:#x}", self.result))
     }
 }
 

@@ -9,6 +9,8 @@ use event::{TraceHead, TracePayload, TraceEvent, USER_ECALL};
 mod event;
 mod errno;
 mod mmap;
+#[allow(unused)]
+mod sysno;
 
 const IN: u64 = 0;
 const OUT: u64 = 1;
