@@ -90,7 +90,7 @@ impl TraceEvent {
             LINUX_SYSCALL_UNAME => self.do_uname(args),
             LINUX_SYSCALL_BRK => self.do_common("brk", 1),
             LINUX_SYSCALL_MMAP => self.do_mmap(args),
-            LINUX_SYSCALL_MPROTECT => self.do_common("mprotect", 3),
+            LINUX_SYSCALL_MPROTECT => self.do_mprotect(args),
 
             LINUX_SYSCALL_PRLIMIT64 => self.do_common("prlimit64", 4),
             LINUX_SYSCALL_GETRANDOM => self.do_common("getrandom", 3),
@@ -207,6 +207,18 @@ impl TraceEvent {
             ("mmap", 6, String::from("MAP_FAILED")) // On error, the value MAP_FAILED(that is, (void *) -1) is returned,
         } else {
             ("mmap", 6, format!("{:#x}", self.result)) // On success, mmap() returns a pointer to the mapped area.
+        }
+    }
+
+    fn do_mprotect(&self,args: &mut Vec<String>) -> (&'static str, usize, String) {
+        if self.head.ax[0] == 0 {
+            args[0] = String::from("NULL");
+        }
+        args[2] = prot_name(self.head.ax[2]);
+        if (self.result as i64) <= 0 {
+            ("mprotect", 3, format!("{}", errno_name(self.result as i32))) 
+        } else {
+            ("mprotect", 3, format!("{:#x}", self.result)) 
         }
     }
 
