@@ -82,6 +82,7 @@ impl TraceEvent {
             LINUX_SYSCALL_CLOSE => self.do_common("close", 1),
             LINUX_SYSCALL_READ => self.do_read(args),
             LINUX_SYSCALL_WRITE => self.do_write(args),
+            LINUX_SYSCALL_WRITEV => self.do_writev(args),
             LINUX_SYSCALL_FSTATAT => self.do_fstatat(args),
             LINUX_SYSCALL_EXIT_GROUP => ("exit_group", 7, format!("{:#x}", self.result)),
             LINUX_SYSCALL_SET_TID_ADDRESS => self.do_common("set_tid_address", 1),
@@ -94,6 +95,14 @@ impl TraceEvent {
 
             LINUX_SYSCALL_PRLIMIT64 => self.do_common("prlimit64", 4),
             LINUX_SYSCALL_GETRANDOM => self.do_common("getrandom", 3),
+            LINUX_SYSCALL_CLONE => self.do_common("clone", 5),
+            LINUX_SYSCALL_EXECVE => self.do_execve(args),
+            LINUX_SYSCALL_GETTID => self.do_common("get_tid", 0),
+            LINUX_SYSCALL_GETPID => self.do_common("getpid", 0),
+            LINUX_SYSCALL_TGKILL => self.do_common("tgkill", 3),
+            LINUX_SYSCALL_WAIT4 => self.do_common("wait4", 4),
+            LINUX_SYSCALL_RT_SIGACTION => self.do_common("rt_sigaction", 4),
+            LINUX_SYSCALL_RT_SIGPROCMASK => self.do_common("rt_sigprocmask", 4),
             _ => ("[unknown sysno]", 7, format!("{:#x}", self.result)),
         }
     }
@@ -238,6 +247,22 @@ impl TraceEvent {
         ("write", 3, format!("{:#x}", self.result))
     }
 
+    fn do_writev(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        assert_eq!(self.payloads.len(), 1);
+        let payload = &self.payloads.first().unwrap();
+        assert_eq!(payload.inout, crate::OUT);
+        assert_eq!(payload.index, 1);
+        args[0] = format!("{}", self.head.ax[0] as isize); // fd
+        args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
+            Ok(content) => {
+                format!("{:?}", content)
+            }
+            Err(_) => "[!parse_str_err!]".to_string(),
+        };
+
+        ("writev", 3, format!("{:#x}", self.result))
+    }
+
     fn do_read(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         assert_eq!(self.payloads.len(), 1);
         let payload = &self.payloads.first().unwrap();
@@ -252,6 +277,38 @@ impl TraceEvent {
         };
 
         ("read", 3, format!("{:#x}", self.result))
+    }
+
+    fn do_execve(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        let mut argv = Vec::new();
+        let mut envp = Vec::new();
+        for payload in &self.payloads {
+            if payload.index == 0 {
+                args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
+                    Ok(content) => {
+                        format!("{:?}", content)
+                    }
+                    Err(_) => "[!parse_str_err!]".to_string(),
+                };
+            }else if payload.index == 1 {
+                argv.push(match CStr::from_bytes_until_nul(&payload.data) {
+                    Ok(content) => {
+                        format!("{:?}", content)
+                    }
+                    Err(_) => "[!parse_str_err!]".to_string(),
+                })
+            }else if payload.index == 2 {
+                envp.push(match CStr::from_bytes_until_nul(&payload.data) {
+                    Ok(content) => {
+                        format!("{:?}", content)
+                    }
+                    Err(_) => "[!parse_str_err!]".to_string(),
+                })
+            }
+        }
+        args[1] = format!("{{{}}}", argv.join(", "));
+        args[2] = format!("{{{}}}", envp.join(", "));
+        ("execve",3, format!("{:#x}", self.result))
     }
 }
 

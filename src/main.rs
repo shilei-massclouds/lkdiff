@@ -11,6 +11,12 @@ mod errno;
 mod mmap;
 #[allow(unused)]
 mod sysno;
+// event.epc != lastevent.epc + 4 
+pub const SPECIAL_SYSCALL: [u64;4]  = [
+    sysno::LINUX_SYSCALL_CLONE,
+    sysno::LINUX_SYSCALL_EXECVE,
+    sysno::LINUX_SYSCALL_WAIT4,
+    sysno::LINUX_SYSCALL_EXIT_GROUP];
 
 const IN: u64 = 0;
 const OUT: u64 = 1;
@@ -57,8 +63,10 @@ fn parse_file(fname: &str) -> Result<()> {
             assert_eq!(evt.head.cause, USER_ECALL);
             assert_eq!(evt.head.inout, OUT);
             let last: &mut TraceEvent = events.last_mut().expect("No requests in event queue!");
-            assert_eq!(evt.head.epc, last.head.epc + 4);
-            assert_eq!(evt.head.ax[7], last.head.ax[7]);
+            if !SPECIAL_SYSCALL.contains(&last.head.ax[7]) {
+                assert_eq!(evt.head.epc, last.head.epc + 4);
+                assert_eq!(evt.head.ax[7], last.head.ax[7]);
+            }
             last.result = evt.head.ax[0];
             last.payloads.append(&mut evt.payloads);
             //println!("replay: {}", last);
