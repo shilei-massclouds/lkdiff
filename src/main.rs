@@ -81,6 +81,7 @@ fn parse_event(reader: &mut BufReader<File>) -> Result<TraceEvent> {
     let head = unsafe {
         mem::transmute::<[u8; TE_SIZE], TraceHead>(buf)
     };
+    assert_eq!(head.cause, USER_ECALL);
 
     //println!("a7: {} total: {}", head.ax[7], head.totalsize);
     let payloads = if head.totalsize as usize > head.headsize as usize {
