@@ -4,6 +4,7 @@ use std::ffi::CStr;
 use std::fmt::{Display, Formatter};
 use std::mem;
 use crate::errno::errno_name;
+use crate::sysno::*;
 
 pub const USER_ECALL: u64 = 8;
 
@@ -88,6 +89,8 @@ impl TraceEvent {
 
             0x105 => self.do_common("prlimit64", 4),
             0x116 => self.do_common("getrandom", 3),
+            SYS_CLONE => self.do_common("clone", 5),
+            SYS_WAIT4 => self.do_common("wait4", 4),
             _ => {
                 ("[unknown sysno]", 7, format!("{:#x}", self.result))
             },

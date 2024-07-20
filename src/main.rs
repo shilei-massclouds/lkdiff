@@ -5,9 +5,11 @@ use std::io::BufReader;
 use std::mem;
 use std::env;
 use event::{TraceHead, TracePayload, TraceEvent, USER_ECALL};
+use sysno::*;
 
 mod event;
 mod errno;
+mod sysno;
 
 const IN: u64 = 0;
 const OUT: u64 = 1;
@@ -40,32 +42,53 @@ fn parse_file(fname: &str) -> Result<()> {
 
     let mut wait_reply = false;
     let mut events = vec![];
+    let mut vfork_idx = None;
     while filesize >= TE_SIZE {
         let mut evt = parse_event(&mut reader)?;
         let advance = evt.head.totalsize as usize;
         assert_eq!(evt.head.magic, LK_MAGIC);
         assert_eq!(evt.head.headsize, TE_SIZE as u16);
         assert!(evt.head.totalsize >= evt.head.headsize as u32);
-        //println!("{}: [{:#x}, {:#x}, {:#x}]", evt.inout, evt.cause, evt.epc, evt.ax[7]);
+        //println!("{}: [{:#x}, {:#x}, {:#x}]", evt.head.inout, evt.head.cause, evt.head.epc, evt.head.ax[7]);
+        assert_eq!(evt.head.cause, USER_ECALL);
         if wait_reply {
             assert_eq!(wait_reply, true);
             wait_reply = false;
 
-            assert_eq!(evt.head.cause, USER_ECALL);
             assert_eq!(evt.head.inout, OUT);
             let last: &mut TraceEvent = events.last_mut().expect("No requests in event queue!");
-            assert_eq!(evt.head.epc, last.head.epc + 4);
             assert_eq!(evt.head.ax[7], last.head.ax[7]);
+            assert_eq!(evt.head.epc, last.head.epc + 4);
             last.result = evt.head.ax[0];
             last.payloads.append(&mut evt.payloads);
             //println!("replay: {}", last);
             println!("{}", last);
-        } else if evt.head.cause == USER_ECALL && evt.head.inout == IN {
+        } else if evt.head.inout == IN {
             assert_eq!(wait_reply, false);
-            wait_reply = true;
+            let sysno = evt.head.ax[7];
+            if sysno == SYS_EXIT_GROUP {
+                println!("{}", evt);
+            } else {
+                wait_reply = true;
+            }
 
             //println!("request: {}", evt.head.ax[7]);
             events.push(evt);
+            if sysno == SYS_CLONE {
+                vfork_idx = Some(events.len() - 1);
+            }
+        } else if evt.head.inout == OUT {
+            // Special case: sysno must be clone(vfork)
+            assert_eq!(evt.head.ax[7], SYS_CLONE);
+            if let Some(idx) = vfork_idx {
+                let last = events.get(idx).unwrap();
+                assert_eq!(last.head.ax[7], SYS_CLONE);
+                assert_eq!(evt.head.epc, last.head.epc + 4);
+            } else {
+                panic!("bad vfork request index {:?}", vfork_idx);
+            }
+            vfork_idx = None;
+            println!("{}", evt);
         } else {
             panic!("irq: {}", evt.head.ax[7]);
         }
