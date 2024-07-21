@@ -10,6 +10,7 @@ pub const USER_ECALL: u64 = 8;
 
 const AT_FDCWD: u64 = -100i64 as u64;
 
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub struct TraceHead {
     pub magic: u16,
@@ -24,12 +25,14 @@ pub struct TraceHead {
     pub orig_a0: u64,
 }
 
+#[derive(Clone, Debug)]
 pub struct TracePayload {
     pub inout: u64,
     pub index: usize,
     pub data: Vec<u8>,
 }
 
+#[derive(Clone, Debug)]
 pub struct TraceEvent {
     pub head: TraceHead,
     pub result: u64,

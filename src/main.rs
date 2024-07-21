@@ -42,7 +42,7 @@ fn parse_file(fname: &str) -> Result<()> {
 
     let mut wait_reply = false;
     let mut events = vec![];
-    let mut vfork_idx = None;
+    let mut vfork_req = None;
     while filesize >= TE_SIZE {
         let mut evt = parse_event(&mut reader)?;
         let advance = evt.head.totalsize as usize;
@@ -72,22 +72,24 @@ fn parse_file(fname: &str) -> Result<()> {
                 wait_reply = true;
             }
 
+            if sysno == SYS_CLONE {
+                vfork_req = Some(evt.clone());
+            }
             //println!("request: {}", evt.head.ax[7]);
             events.push(evt);
-            if sysno == SYS_CLONE {
-                vfork_idx = Some(events.len() - 1);
-            }
         } else if evt.head.inout == OUT {
             // Special case: sysno must be clone(vfork)
             assert_eq!(evt.head.ax[7], SYS_CLONE);
-            if let Some(idx) = vfork_idx {
-                let last = events.get(idx).unwrap();
+            if let Some(last) = vfork_req {
                 assert_eq!(last.head.ax[7], SYS_CLONE);
+                assert_eq!(last.payloads.len(), 0);
                 assert_eq!(evt.head.epc, last.head.epc + 4);
+                evt.result = evt.head.ax[0];
+                evt.head.ax[0] = last.head.ax[0];
             } else {
-                panic!("bad vfork request index {:?}", vfork_idx);
+                panic!("bad vfork request {:?}", vfork_req);
             }
-            vfork_idx = None;
+            vfork_req = None;
             println!("{}", evt);
         } else {
             panic!("irq: {}", evt.head.ax[7]);
@@ -122,6 +124,7 @@ fn parse_event(reader: &mut BufReader<File>) -> Result<TraceEvent> {
 }
 
 fn parse_payloads(reader: &mut BufReader<File>, inout: u64, mut size: usize) -> Result<Vec<TracePayload>> {
+    assert_eq!(inout, OUT);
     assert!(size > PH_SIZE);
     let mut ret = vec![];
     while size > 0 {
