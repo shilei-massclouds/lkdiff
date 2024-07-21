@@ -49,26 +49,24 @@ fn parse_file(fname: &str) -> Result<()> {
         assert_eq!(evt.head.magic, LK_MAGIC);
         assert_eq!(evt.head.headsize, TE_SIZE as u16);
         assert!(evt.head.totalsize >= evt.head.headsize as u32);
-        //println!("{}: [{:#x}, {:#x}, {:#x}]", evt.head.inout, evt.head.cause, evt.head.epc, evt.head.ax[7]);
+        println!("{}: [{:#x}, {:#x}, {:#x}]", evt.head.inout, evt.head.cause, evt.head.epc, evt.head.ax[7]);
         assert_eq!(evt.head.cause, USER_ECALL);
         if wait_reply {
-            assert_eq!(wait_reply, true);
             wait_reply = false;
 
             assert_eq!(evt.head.inout, OUT);
             let last: &mut TraceEvent = events.last_mut().expect("No requests in event queue!");
             assert_eq!(evt.head.ax[7], last.head.ax[7]);
-            assert_eq!(evt.head.epc, last.head.epc + 4);
+            if evt.head.ax[7] != SYS_EXECVE {
+                assert_eq!(evt.head.epc, last.head.epc + 4);
+            }
             last.result = evt.head.ax[0];
             last.payloads.append(&mut evt.payloads);
             //println!("replay: {}", last);
-            println!("{}", last);
         } else if evt.head.inout == IN {
             assert_eq!(wait_reply, false);
             let sysno = evt.head.ax[7];
-            if sysno == SYS_EXIT_GROUP {
-                println!("{}", evt);
-            } else {
+            if sysno != SYS_EXIT_GROUP {
                 wait_reply = true;
             }
 
@@ -90,12 +88,16 @@ fn parse_file(fname: &str) -> Result<()> {
                 panic!("bad vfork request {:?}", vfork_req);
             }
             vfork_req = None;
-            println!("{}", evt);
+            events.push(evt);
         } else {
             panic!("irq: {}", evt.head.ax[7]);
         }
 
         filesize -= advance;
+    }
+
+    for evt in events {
+        println!("{}", evt);
     }
     Ok(())
 }

@@ -94,6 +94,7 @@ impl TraceEvent {
             0x116 => self.do_common("getrandom", 3),
             SYS_CLONE => self.do_common("clone", 5),
             SYS_WAIT4 => self.do_common("wait4", 4),
+            SYS_EXECVE => self.do_common("execve", 3),
             _ => {
                 ("[unknown sysno]", 7, format!("{:#x}", self.result))
             },

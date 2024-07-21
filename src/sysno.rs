@@ -45,8 +45,8 @@ pub const SYS_BRK: u64 = 0xd6;
 pub const SYS_MUNMAP: u64 = 0xd7;
 */
 pub const SYS_CLONE: u64 = 0xdc;
-/*
 pub const SYS_EXECVE: u64 = 0xdd;
+/*
 pub const SYS_MMAP: u64 = 0xde;
 pub const SYS_MPROTECT: u64 = 0xe2;
 pub const SYS_MSYNC: u64 = 0xe3;
