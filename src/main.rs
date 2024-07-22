@@ -4,6 +4,7 @@ use std::io::Result;
 use std::io::BufReader;
 use std::mem;
 use std::env;
+use std::collections::BTreeMap;
 use event::{TraceHead, TracePayload, TraceEvent, USER_ECALL};
 use sysno::*;
 
@@ -40,8 +41,7 @@ fn parse_file(fname: &str) -> Result<()> {
     let mut filesize = f.metadata().unwrap().len() as usize;
     let mut reader = BufReader::new(f);
 
-    let mut wait_reply = false;
-    let mut events = vec![];
+    let mut events_map: BTreeMap<u64, Vec<TraceEvent>> = BTreeMap::new();
     let mut vfork_req = None;
     while filesize >= TE_SIZE {
         let mut evt = parse_event(&mut reader)?;
@@ -49,55 +49,62 @@ fn parse_file(fname: &str) -> Result<()> {
         assert_eq!(evt.head.magic, LK_MAGIC);
         assert_eq!(evt.head.headsize, TE_SIZE as u16);
         assert!(evt.head.totalsize >= evt.head.headsize as u32);
-        println!("{}: [{:#x}, {:#x}, {:#x}]", evt.head.inout, evt.head.cause, evt.head.epc, evt.head.ax[7]);
+        /*
+        println!("tid: {:#x} -> ({})[{:#x}, {:#x}, {:#x}]",
+            evt.head.sscratch, evt.head.inout, evt.head.cause, evt.head.epc, evt.head.ax[7]);
+        */
         assert_eq!(evt.head.cause, USER_ECALL);
-        if wait_reply {
-            wait_reply = false;
 
-            assert_eq!(evt.head.inout, OUT);
-            let last: &mut TraceEvent = events.last_mut().expect("No requests in event queue!");
-            assert_eq!(evt.head.ax[7], last.head.ax[7]);
-            if evt.head.ax[7] != SYS_EXECVE {
-                assert_eq!(evt.head.epc, last.head.epc + 4);
-            }
-            last.result = evt.head.ax[0];
-            last.payloads.append(&mut evt.payloads);
-            //println!("replay: {}", last);
-        } else if evt.head.inout == IN {
-            assert_eq!(wait_reply, false);
-            let sysno = evt.head.ax[7];
-            if sysno != SYS_EXIT_GROUP {
-                wait_reply = true;
-            }
+        let tid = evt.head.sscratch;
+        let events = match events_map.get_mut(&tid) {
+            Some(q) => q,
+            None => {
+                // Start of each event is either req or clone.replay
+                assert!(evt.head.inout == IN || evt.head.ax[7] == SYS_CLONE);
+                events_map.insert(tid, vec![]);
+                let events = events_map.get_mut(&tid).unwrap();
+                if evt.head.inout == OUT {
+                    let req = vfork_req.take().unwrap();
+                    events.push(req);
+                }
+                events
+            },
+        };
 
-            if sysno == SYS_CLONE {
-                vfork_req = Some(evt.clone());
-            }
-            //println!("request: {}", evt.head.ax[7]);
-            events.push(evt);
-        } else if evt.head.inout == OUT {
-            // Special case: sysno must be clone(vfork)
-            assert_eq!(evt.head.ax[7], SYS_CLONE);
-            if let Some(last) = vfork_req {
-                assert_eq!(last.head.ax[7], SYS_CLONE);
-                assert_eq!(last.payloads.len(), 0);
+        match evt.head.inout {
+            IN => {
+                //println!("request: {}", evt.head.ax[7]);
+                if let Some(last) = events.last() {
+                    assert_eq!(last.head.inout, OUT);
+                }
+
+                let sysno = evt.head.ax[7];
+                if sysno == SYS_CLONE {
+                    vfork_req = Some(evt.clone());
+                }
+                events.push(evt);
+            },
+            OUT => {
+                let last = events.last_mut().expect("No requests in event queue!");
+                assert_eq!(evt.head.ax[7], last.head.ax[7]);
                 assert_eq!(evt.head.epc, last.head.epc + 4);
-                evt.result = evt.head.ax[0];
-                evt.head.ax[0] = last.head.ax[0];
-            } else {
-                panic!("bad vfork request {:?}", vfork_req);
-            }
-            vfork_req = None;
-            events.push(evt);
-        } else {
-            panic!("irq: {}", evt.head.ax[7]);
+                last.result = evt.head.ax[0];
+                last.payloads.append(&mut evt.payloads);
+                last.head.inout = OUT;
+                //println!("replay: {}", last);
+            },
+            _ => unreachable!(),
         }
 
         filesize -= advance;
     }
 
-    for evt in events {
-        println!("{}", evt);
+    for (id, events) in events_map.iter() {
+        println!("Task[{:#x}] ========>", id);
+        for evt in events {
+            println!("{}", evt);
+        }
+        println!("");
     }
     Ok(())
 }

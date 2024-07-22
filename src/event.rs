@@ -23,6 +23,9 @@ pub struct TraceHead {
     pub usp: u64,
     pub stack: [u64; 8],
     pub orig_a0: u64,
+    pub satp: u64,
+    pub tp: u64,
+    pub sscratch: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -81,7 +84,6 @@ impl TraceEvent {
             0x3f => self.do_common("read", 3),
             0x40 => self.do_common("write", 3),
             0x4f => self.do_fstatat(args),
-            0x5e => ("exit_group", 7, format!("{:#x}", self.result)),
             0x60 => self.do_common("set_tid_address", 1),
             0x63 => self.do_common("set_robust_list", 2),
             0x71 => self.do_common("clock_gettime", 2),
@@ -95,6 +97,7 @@ impl TraceEvent {
             SYS_CLONE => self.do_common("clone", 5),
             SYS_WAIT4 => self.do_common("wait4", 4),
             SYS_EXECVE => self.do_common("execve", 3),
+            SYS_EXIT_GROUP => self.do_common("exit_group", 1),
             _ => {
                 ("[unknown sysno]", 7, format!("{:#x}", self.result))
             },
