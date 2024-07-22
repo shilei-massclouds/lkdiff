@@ -11,6 +11,7 @@ pub const USER_ECALL: u64 = 8;
 
 const AT_FDCWD: u64 = -100i64 as u64;
 
+#[derive(Clone, Debug)]
 #[repr(C)]
 pub struct TraceHead {
     pub magic: u16,
@@ -29,12 +30,14 @@ pub struct TraceHead {
     pub orig_a0: u64,
 }
 
+#[derive(Clone, Debug)]
 pub struct TracePayload {
     pub inout: u64,
     pub index: usize,
     pub data: Vec<u8>,
 }
 
+#[derive(Clone, Debug)]
 pub struct TraceEvent {
     pub head: TraceHead,
     pub result: u64,
@@ -76,33 +79,33 @@ const KSTAT_SIZE: usize = mem::size_of::<KStat>();
 impl TraceEvent {
     pub fn handle_syscall(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         match self.head.ax[7] {
-            LINUX_SYSCALL_IOCTL => self.do_common("ioctl", 3),
-            LINUX_SYSCALL_FACCESSAT => self.do_faccessat(args),
-            LINUX_SYSCALL_OPENAT => self.do_openat(args),
-            LINUX_SYSCALL_CLOSE => self.do_common("close", 1),
-            LINUX_SYSCALL_READ => self.do_read(args),
-            LINUX_SYSCALL_WRITE => self.do_write(args),
-            LINUX_SYSCALL_WRITEV => self.do_writev(args),
-            LINUX_SYSCALL_FSTATAT => self.do_fstatat(args),
-            LINUX_SYSCALL_EXIT_GROUP => ("exit_group", 7, format!("{:#x}", self.result)),
-            LINUX_SYSCALL_SET_TID_ADDRESS => self.do_common("set_tid_address", 1),
-            LINUX_SYSCALL_SET_ROBUST_LIST => self.do_common("set_robust_list", 2),
-            LINUX_SYSCALL_CLOCK_GETTIME => self.do_common("clock_gettime", 2),
-            LINUX_SYSCALL_UNAME => self.do_uname(args),
-            LINUX_SYSCALL_BRK => self.do_common("brk", 1),
-            LINUX_SYSCALL_MMAP => self.do_mmap(args),
-            LINUX_SYSCALL_MPROTECT => self.do_mprotect(args),
+            SYS_IOCTL => self.do_common("ioctl", 3),
+            SYS_FACCESSAT => self.do_faccessat(args),
+            SYS_OPENAT => self.do_openat(args),
+            SYS_CLOSE => self.do_common("close", 1),
+            SYS_READ => self.do_read(args),
+            SYS_WRITE => self.do_write(args),
+            SYS_WRITEV => self.do_writev(args),
+            SYS_FSTATAT => self.do_fstatat(args),
+            SYS_EXIT_GROUP => ("exit_group", 7, format!("{:#x}", self.result)),
+            SYS_SET_TID_ADDRESS => self.do_common("set_tid_address", 1),
+            SYS_SET_ROBUST_LIST => self.do_common("set_robust_list", 2),
+            SYS_CLOCK_GETTIME => self.do_common("clock_gettime", 2),
+            SYS_UNAME => self.do_uname(args),
+            SYS_BRK => self.do_common("brk", 1),
+            SYS_MMAP => self.do_mmap(args),
+            SYS_MPROTECT => self.do_mprotect(args),
 
-            LINUX_SYSCALL_PRLIMIT64 => self.do_common("prlimit64", 4),
-            LINUX_SYSCALL_GETRANDOM => self.do_common("getrandom", 3),
-            LINUX_SYSCALL_CLONE => self.do_common("clone", 5),
-            LINUX_SYSCALL_EXECVE => self.do_execve(args),
-            LINUX_SYSCALL_GETTID => self.do_common("get_tid", 0),
-            LINUX_SYSCALL_GETPID => self.do_common("getpid", 0),
-            LINUX_SYSCALL_TGKILL => self.do_common("tgkill", 3),
-            LINUX_SYSCALL_WAIT4 => self.do_common("wait4", 4),
-            LINUX_SYSCALL_RT_SIGACTION => self.do_common("rt_sigaction", 4),
-            LINUX_SYSCALL_RT_SIGPROCMASK => self.do_common("rt_sigprocmask", 4),
+            SYS_PRLIMIT64 => self.do_common("prlimit64", 4),
+            SYS_GETRANDOM => self.do_common("getrandom", 3),
+            SYS_CLONE => self.do_common("clone", 5),
+            SYS_EXECVE => self.do_execve(args),
+            SYS_GETTID => self.do_common("get_tid", 0),
+            SYS_GETPID => self.do_common("getpid", 0),
+            SYS_TGKILL => self.do_common("tgkill", 3),
+            SYS_WAIT4 => self.do_common("wait4", 4),
+            SYS_RT_SIGACTION => self.do_common("rt_sigaction", 4),
+            SYS_RT_SIGPROCMASK => self.do_common("rt_sigprocmask", 4),
             _ => ("[unknown sysno]", 7, format!("{:#x}", self.result)),
         }
     }
