@@ -7,6 +7,7 @@ use std::mem;
 use std::collections::BTreeMap;
 use event::{TraceHead, TracePayload, TraceEvent, USER_ECALL};
 use sysno::*;
+use event::SigStage;
 
 mod errno;
 mod event;
@@ -45,6 +46,7 @@ fn parse_file(fname: &str) -> Result<()> {
 
     let mut events_map: BTreeMap<u64, Vec<TraceEvent>> = BTreeMap::new();
     let mut vfork_req = None;
+    let mut saved_req = None;
     while filesize >= TE_SIZE {
         let mut evt = parse_event(&mut reader)?;
         let advance = evt.head.totalsize as usize;
@@ -54,7 +56,7 @@ fn parse_file(fname: &str) -> Result<()> {
         /*
         println!("tid: {:#x} -> ({})[{:#x}, {:#x}, {:#x}]",
             evt.head.sscratch, evt.head.inout, evt.head.cause, evt.head.epc, evt.head.ax[7]);
-        */
+            */
         assert_eq!(evt.head.cause, USER_ECALL);
 
         let tid = evt.head.sscratch;
@@ -63,6 +65,7 @@ fn parse_file(fname: &str) -> Result<()> {
             None => {
                 // Start of each event is either req or clone.replay
                 assert!(evt.head.inout == IN || evt.head.ax[7] == SYS_CLONE);
+                println!("New events: {:#x}", tid);
                 events_map.insert(tid, vec![]);
                 let events = events_map.get_mut(&tid).unwrap();
                 if evt.head.inout == OUT {
@@ -81,18 +84,38 @@ fn parse_file(fname: &str) -> Result<()> {
                 }
 
                 let sysno = evt.head.ax[7];
-                if sysno == SYS_CLONE {
-                    vfork_req = Some(evt.clone());
+                match sysno {
+                    SYS_CLONE => {
+                        vfork_req = Some(evt.clone());
+                        events.push(evt);
+                    },
+                    SYS_RT_SIGRETURN => {
+                        events.push(saved_req.take().unwrap());
+                    },
+                    _ => {
+                        events.push(evt);
+                    },
                 }
-                events.push(evt);
             },
             OUT => {
                 let last = events.last_mut().expect("No requests in event queue!");
                 assert_eq!(evt.head.ax[7], last.head.ax[7]);
-                assert_eq!(evt.head.epc, last.head.epc + 4);
-                last.result = evt.head.ax[0];
-                last.payloads.append(&mut evt.payloads);
-                last.head.inout = OUT;
+                if evt.head.epc != last.head.epc + 4 {
+                    //println!("signal: evt {:?}", evt);
+                    let mut last = events.pop().unwrap();
+                    last.signal = SigStage::Exit;
+                    saved_req = Some(last);
+
+                    let mut sig_req = TraceEvent::default();
+                    sig_req.signal = SigStage::Enter;
+                    sig_req.head.inout = OUT;
+                    sig_req.head.ax[0] = evt.head.ax[0];
+                    events.push(sig_req);
+                } else {
+                    last.result = evt.head.ax[0];
+                    last.payloads.append(&mut evt.payloads);
+                    last.head.inout = OUT;
+                }
                 //println!("replay: {}", last);
             },
             _ => unreachable!(),
@@ -132,6 +155,7 @@ fn parse_event(reader: &mut BufReader<File>) -> Result<TraceEvent> {
         head,
         result: 0,
         payloads,
+        signal: SigStage::Empty,
     };
     Ok(evt)
 }
