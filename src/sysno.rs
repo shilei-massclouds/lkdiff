@@ -31,7 +31,12 @@ pub const SYS_EXIT_GROUP: u64 = 0x5e;
 /*
 pub const SYS_SETITIMER: u64 = 0x67;
 pub const SYS_TGKILL: u64 = 0x83;
+*/
+pub const SYS_KILL: u64 = 0x81;
+pub const SYS_RT_SIGACTION: u64 = 0x86;
+pub const SYS_RT_SIGPROCMASK: u64 = 0x87;
 pub const SYS_RT_SIGRETURN: u64 = 0x8b;
+/*
 pub const SYS_SETPGID: u64 = 0x9a;
 pub const SYS_UNAME: u64 = 0xa0;
 pub const SYS_GETPID: u64 = 0xac;
@@ -63,7 +68,4 @@ pub const SYS_SET_ROBUST_LIST: u64 = 0x63;
 pub const SYS_CLOCK_GETTIME: u64 = 0x71;
 pub const SYS_CLOCK_NANOSLEEP: u64 = 0x73;
 pub const SYS_SCHED_GETAFFINITY: u64 = 0x7b;
-pub const SYS_KILL: u64 = 0x81;
-pub const SYS_RT_SIGACTION: u64 = 0x86;
-pub const SYS_RT_SIGPROCMASK: u64 = 0x87;
 */

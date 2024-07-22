@@ -10,7 +10,7 @@ pub const USER_ECALL: u64 = 8;
 
 const AT_FDCWD: u64 = -100i64 as u64;
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 #[repr(C)]
 pub struct TraceHead {
     pub magic: u16,
@@ -28,18 +28,27 @@ pub struct TraceHead {
     pub sscratch: u64,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
 pub struct TracePayload {
     pub inout: u64,
     pub index: usize,
     pub data: Vec<u8>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Default)]
+pub enum SigStage {
+    #[default]
+    Empty,
+    Enter,
+    Exit,
+}
+
+#[derive(Clone, Debug, Default)]
 pub struct TraceEvent {
     pub head: TraceHead,
     pub result: u64,
     pub payloads: Vec<TracePayload>,
+    pub signal: SigStage,
 }
 
 const UTS_LEN: usize = 64;
@@ -94,6 +103,9 @@ impl TraceEvent {
 
             0x105 => self.do_common("prlimit64", 4),
             0x116 => self.do_common("getrandom", 3),
+            SYS_KILL=> self.do_common("kill", 2),
+            SYS_RT_SIGACTION => self.do_common("sigaction", 4),
+            SYS_RT_SIGPROCMASK => self.do_common("sigprocmask", 4),
             SYS_CLONE => self.do_common("clone", 5),
             SYS_WAIT4 => self.do_common("wait4", 4),
             SYS_EXECVE => self.do_common("execve", 3),
@@ -202,14 +214,20 @@ impl TraceEvent {
 
 impl Display for TraceEvent {
     fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
+        match self.signal {
+            SigStage::Enter => {
+                return write!(fmt, "Signal[{}] enter..", self.head.ax[0]);
+            },
+            SigStage::Exit => {
+                writeln!(fmt, "Signal exit..")?;
+            },
+            _ => (),
+        }
         assert_eq!(self.head.cause, USER_ECALL);
-
         let mut args = self.head.ax[..7].iter().map(|arg|
             format!("{:#x}", arg)
         ).collect::<Vec<_>>();
-
         let (syscall, argc, result) = self.handle_syscall(&mut args);
-
         write!(fmt, "[{}]{}({}) -> {}, usp: {:#x}",
             self.head.ax[7], syscall, args[..argc].join(", "), result,
             self.head.usp)
