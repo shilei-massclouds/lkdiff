@@ -28,6 +28,9 @@ pub struct TraceHead {
     pub usp: u64,
     pub stack: [u64; 8],
     pub orig_a0: u64,
+    pub satp: u64,
+    pub tp: u64,
+    pub sscratch: u64,
 }
 
 #[derive(Clone, Debug)]
@@ -104,9 +107,9 @@ impl TraceEvent {
             SYS_GETPID => self.do_common("getpid", 0),
             SYS_TGKILL => self.do_common("tgkill", 3),
             SYS_WAIT4 => self.do_common("wait4", 4),
-            SYS_RT_SIGACTION => self.do_common("rt_sigaction", 4),
-            SYS_RT_SIGPROCMASK => self.do_common("rt_sigprocmask", 4),
-            _ => ("[unknown sysno]", 7, format!("{:#x}", self.result)),
+            _ => {
+                ("[unknown sysno]", 7, format!("{:#x}", self.result))
+            },
         }
     }
 
