@@ -100,7 +100,10 @@ fn parse_file(fname: &str) -> Result<()> {
             OUT => {
                 let last = events.last_mut().expect("No requests in event queue!");
                 assert_eq!(evt.head.ax[7], last.head.ax[7]);
-                if evt.head.epc != last.head.epc + 4 {
+                // Todo: to distinguish signal by epc is NOT a proper method.
+                // Try to find exact method.
+                if evt.head.ax[7] != SYS_EXECVE && evt.head.epc != last.head.epc + 4 {
+                    assert!(evt.head.ax[7] != SYS_EXECVE);
                     //println!("signal: evt {:?}", evt);
                     let mut last = events.pop().unwrap();
                     last.signal = SigStage::Exit;

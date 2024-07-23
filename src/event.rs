@@ -97,9 +97,9 @@ impl TraceEvent {
             SYS_CLOSE => self.do_common("close", 1),
             SYS_READ => self.do_read(args),
             SYS_WRITE => self.do_write(args),
-            SYS_WRITEV => self.do_writev(args),
+            SYS_WRITEV => self.do_common("writev", 3),
             SYS_FSTATAT => self.do_fstatat(args),
-            SYS_EXIT_GROUP => ("exit_group", 7, format!("{:#x}", self.result)),
+            SYS_EXIT_GROUP => self.do_common("exit_group", 1),
             SYS_SET_TID_ADDRESS => self.do_common("set_tid_address", 1),
             SYS_SET_ROBUST_LIST => self.do_common("set_robust_list", 2),
             SYS_CLOCK_GETTIME => self.do_common("clock_gettime", 2),
@@ -255,44 +255,33 @@ impl TraceEvent {
         assert_eq!(payload.inout, crate::OUT);
         assert_eq!(payload.index, 1);
         args[0] = format!("{}", self.head.ax[0] as isize); // fd
-        args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
-            Ok(content) => {
-                format!("{:?}", content)
-            }
-            Err(_) => "[!parse_str_err!]".to_string(),
-        };
+        if self.head.ax[0] == 1 || self.head.ax[0] == 2 {
+            args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
+                Ok(content) => {
+                    format!("{:?}", content)
+                }
+                Err(_) => "[!parse_str_err!]".to_string(),
+            };
+        }
 
         ("write", 3, format!("{:#x}", self.result))
     }
 
-    fn do_writev(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
-        assert_eq!(self.payloads.len(), 1);
-        let payload = &self.payloads.first().unwrap();
-        assert_eq!(payload.inout, crate::OUT);
-        assert_eq!(payload.index, 1);
-        args[0] = format!("{}", self.head.ax[0] as isize); // fd
-        args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
-            Ok(content) => {
-                format!("{:?}", content)
-            }
-            Err(_) => "[!parse_str_err!]".to_string(),
-        };
-
-        ("writev", 3, format!("{:#x}", self.result))
-    }
-
     fn do_read(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
-        assert_eq!(self.payloads.len(), 1);
-        let payload = &self.payloads.first().unwrap();
-        assert_eq!(payload.inout, crate::OUT);
-        assert_eq!(payload.index, 1);
         args[0] = format!("{}", self.head.ax[0] as isize); // fd
-        args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
-            Ok(content) => {
-                format!("{:?}", content)
-            }
-            Err(_) => "[!parse_str_err!]".to_string(),
-        };
+        if self.head.ax[0] == 0 {
+            assert_eq!(self.payloads.len(), 1);
+            let payload = &self.payloads.first().unwrap();
+            assert_eq!(payload.inout, crate::OUT);
+            assert_eq!(payload.index, 1);
+
+            args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
+                Ok(content) => {
+                    format!("{:?}", content)
+                }
+                Err(_) => "[!parse_str_err!]".to_string(),
+            };
+        }
 
         ("read", 3, format!("{:#x}", self.result))
     }
