@@ -3,9 +3,11 @@
 use crate::errno::errno_name;
 use crate::mmap::{map_name, prot_name};
 use crate::sysno::*;
+use crate::signal::{SigAction, sig_name};
 use std::ffi::CStr;
 use std::fmt::{Display, Formatter};
 use std::mem;
+use std::collections::HashSet;
 
 pub const USER_ECALL: u64 = 8;
 
@@ -44,8 +46,8 @@ pub struct TracePayload {
 pub enum SigStage {
     #[default]
     Empty,
-    Enter,
-    Exit,
+    Enter(u64),
+    Exit(u64),
 }
 
 #[derive(Clone, Debug, Default)]
@@ -54,6 +56,22 @@ pub struct TraceEvent {
     pub result: u64,
     pub payloads: Vec<TracePayload>,
     pub signal: SigStage,
+}
+
+pub struct TraceFlow {
+    pub events: Vec<TraceEvent>,
+    pub signal_stack: Vec<TraceEvent>,
+    pub sighand_set: HashSet<usize>,
+}
+
+impl TraceFlow {
+    pub fn new() -> Self {
+        Self {
+            events: Vec::new(),
+            signal_stack: Vec::new(),
+            sighand_set: HashSet::new(),
+        }
+    }
 }
 
 const UTS_LEN: usize = 64;
@@ -111,7 +129,7 @@ impl TraceEvent {
             SYS_PRLIMIT64 => self.do_common("prlimit64", 4),
             SYS_GETRANDOM => self.do_common("getrandom", 3),
             SYS_KILL=> self.do_common("kill", 2),
-            SYS_RT_SIGACTION => self.do_common("sigaction", 4),
+            SYS_RT_SIGACTION => self.do_rt_sigaction(args),
             SYS_RT_SIGPROCMASK => self.do_common("sigprocmask", 4),
             SYS_CLONE => self.do_common("clone", 5),
             SYS_EXECVE => self.do_execve(args),
@@ -238,15 +256,25 @@ impl TraceEvent {
         }
     }
 
+    fn do_rt_sigaction(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        assert!(self.payloads.len() == 1);
+        let signum = self.head.ax[0];
+
+        let (sig_action, index) = parse_sigaction(self);
+        args[0] = sig_name(signum);
+        args[index] = sig_action.to_string();
+        ("rt_sigaction", 3, format!("{:#x}", self.result))
+     }
+
     fn do_mprotect(&self,args: &mut Vec<String>) -> (&'static str, usize, String) {
         if self.head.ax[0] == 0 {
             args[0] = String::from("NULL");
         }
         args[2] = prot_name(self.head.ax[2]);
         if (self.result as i64) <= 0 {
-            ("mprotect", 3, format!("{}", errno_name(self.result as i32))) 
+            ("mprotect", 3, format!("{}", errno_name(self.result as i32)))
         } else {
-            ("mprotect", 3, format!("{:#x}", self.result)) 
+            ("mprotect", 3, format!("{:#x}", self.result))
         }
     }
 
@@ -323,11 +351,11 @@ impl TraceEvent {
 impl Display for TraceEvent {
     fn fmt(&self, fmt: &mut Formatter) -> std::fmt::Result {
         match self.signal {
-            SigStage::Enter => {
-                return write!(fmt, "Signal[{}] enter..", self.head.ax[0]);
+            SigStage::Enter(signo) => {
+                return write!(fmt, "Signal[{}] enter..", sig_name(signo));
             },
-            SigStage::Exit => {
-                writeln!(fmt, "Signal exit..")?;
+            SigStage::Exit(signo) => {
+                writeln!(fmt, "Signal[{}] exit..", sig_name(signo))?;
             },
             _ => (),
         }
@@ -350,4 +378,12 @@ impl Display for TraceEvent {
             self.head.usp
         )
     }
+}
+
+pub fn parse_sigaction(evt: &TraceEvent) -> (SigAction, usize) {
+    let payload = evt.payloads.first().unwrap();
+    let mut buf = [0u8; 24];
+    buf.clone_from_slice(&payload.data[..24]);
+    let sigaction = unsafe { mem::transmute::<[u8; 24], SigAction>(buf) };
+    (sigaction, payload.index)
 }

@@ -14,3 +14,6 @@ Cargo.lock
 *.pdb
 *.swp
 *.output
+lk.sh
+linux.sh
+tags
