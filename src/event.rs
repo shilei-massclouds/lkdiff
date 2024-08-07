@@ -1,6 +1,7 @@
 //! Trace event.
 
 use crate::errno::errno_name;
+use crate::fs::FileSystemInfo;
 use crate::mmap::{map_name, prot_name};
 use crate::sysno::*;
 use crate::signal::{SigAction, sig_name};
@@ -138,6 +139,7 @@ impl TraceEvent {
             SYS_TGKILL => self.do_common("tgkill", 3),
             SYS_WAIT4 => self.do_common("wait4", 4),
             SYS_GETDENTS64 => self.do_common("getdents64", 3),
+            SYS_STATFS64 => self.do_statfs64(args),
             _ => {
                 ("[unknown sysno]", 7, format!("{:#x}", self.result))
             },
@@ -280,18 +282,16 @@ impl TraceEvent {
 
     fn do_write(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         args[0] = format!("{}", self.head.ax[0] as isize); // fd
-        if self.head.ax[0] == 1 || self.head.ax[0] == 2 {
-            if self.payloads.len() == 1 {
-                let payload = &self.payloads.first().unwrap();
-                assert_eq!(payload.inout, crate::OUT);
-                assert_eq!(payload.index, 1);
-                args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
-                    Ok(content) => {
-                        format!("{:?}", content)
-                    }
-                    Err(_) => "[!parse_str_err!]".to_string(),
-                };
-            }
+        if (self.head.ax[0] == 1 || self.head.ax[0] == 2) && self.payloads.len() == 1 {
+            let payload = &self.payloads.first().unwrap();
+            assert_eq!(payload.inout, crate::OUT);
+            assert_eq!(payload.index, 1);
+            args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
+                Ok(content) => {
+                    format!("{:?}", content)
+                }
+                Err(_) => "[!parse_str_err!]".to_string(),
+            };
         }
 
         ("write", 3, format!("{:#x}", self.result))
@@ -299,22 +299,45 @@ impl TraceEvent {
 
     fn do_read(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         args[0] = format!("{}", self.head.ax[0] as isize); // fd
-        if self.head.ax[0] == 0 {
-            if self.payloads.len() == 1 {
-                let payload = &self.payloads.first().unwrap();
-                assert_eq!(payload.inout, crate::OUT);
-                assert_eq!(payload.index, 1);
+        if self.head.ax[0] == 0 && self.payloads.len() == 1 {
+            let payload = &self.payloads.first().unwrap();
+            assert_eq!(payload.inout, crate::OUT);
+            assert_eq!(payload.index, 1);
 
-                args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
-                    Ok(content) => {
-                        format!("{:?}", content)
-                    }
-                    Err(_) => "[!parse_str_err!]".to_string(),
-                };
-            }
+            args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
+                Ok(content) => {
+                    format!("{:?}", content)
+                }
+                Err(_) => "[!parse_str_err!]".to_string(),
+            };
         }
 
         ("read", 3, format!("{:#x}", self.result))
+    }
+
+    fn do_statfs64(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        for payload in self.payloads.iter() {
+            match payload.index {
+                0 => {
+                    let fname = CStr::from_bytes_until_nul(&payload.data).unwrap();
+                    let fname = match fname.to_str() {
+                        Ok(name) => {
+                            format!("\"{}\"", name)
+                        }
+                        Err(_) => "[!parse_str_err!]".to_string(),
+                    };
+                    args[0] = fname;
+                },
+                1 => {
+                    let mut buf = [0u8; 120];
+                    buf.clone_from_slice(&payload.data[..120]);
+                    let buf = unsafe { mem::transmute::<[u8; 120], FileSystemInfo>(buf) };
+                    args[1] = buf.to_string();
+                }
+                _ => { unreachable!() }
+            }
+        }
+        ("statfs64", 2, format!("{:#x}", self.result))
     }
 
     fn do_execve(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
