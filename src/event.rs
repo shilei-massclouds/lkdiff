@@ -281,16 +281,17 @@ impl TraceEvent {
     fn do_write(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         args[0] = format!("{}", self.head.ax[0] as isize); // fd
         if self.head.ax[0] == 1 || self.head.ax[0] == 2 {
-            assert_eq!(self.payloads.len(), 1);
-            let payload = &self.payloads.first().unwrap();
-            assert_eq!(payload.inout, crate::OUT);
-            assert_eq!(payload.index, 1);
-            args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
-                Ok(content) => {
-                    format!("{:?}", content)
-                }
-                Err(_) => "[!parse_str_err!]".to_string(),
-            };
+            if self.payloads.len() == 1 {
+                let payload = &self.payloads.first().unwrap();
+                assert_eq!(payload.inout, crate::OUT);
+                assert_eq!(payload.index, 1);
+                args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
+                    Ok(content) => {
+                        format!("{:?}", content)
+                    }
+                    Err(_) => "[!parse_str_err!]".to_string(),
+                };
+            }
         }
 
         ("write", 3, format!("{:#x}", self.result))
@@ -299,17 +300,18 @@ impl TraceEvent {
     fn do_read(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         args[0] = format!("{}", self.head.ax[0] as isize); // fd
         if self.head.ax[0] == 0 {
-            assert_eq!(self.payloads.len(), 1);
-            let payload = &self.payloads.first().unwrap();
-            assert_eq!(payload.inout, crate::OUT);
-            assert_eq!(payload.index, 1);
+            if self.payloads.len() == 1 {
+                let payload = &self.payloads.first().unwrap();
+                assert_eq!(payload.inout, crate::OUT);
+                assert_eq!(payload.index, 1);
 
-            args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
-                Ok(content) => {
-                    format!("{:?}", content)
-                }
-                Err(_) => "[!parse_str_err!]".to_string(),
-            };
+                args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
+                    Ok(content) => {
+                        format!("{:?}", content)
+                    }
+                    Err(_) => "[!parse_str_err!]".to_string(),
+                };
+            }
         }
 
         ("read", 3, format!("{:#x}", self.result))

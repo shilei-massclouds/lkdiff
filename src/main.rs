@@ -55,8 +55,10 @@ fn parse_file(fname: &str) -> Result<()> {
         assert_eq!(evt.head.headsize, TE_SIZE as u16);
         assert!(evt.head.totalsize >= evt.head.headsize as u32);
 
+        /*
         println!("tid: {:#x} -> ({})[{:#x}, {:#x}, {}]",
             evt.head.sscratch, evt.head.inout, evt.head.cause, evt.head.epc, evt.head.ax[7]);
+            */
 
         assert_eq!(evt.head.cause, USER_ECALL);
 
@@ -91,7 +93,7 @@ fn parse_file(fname: &str) -> Result<()> {
                         flow.events.push(evt);
                     },
                     SYS_RT_SIGRETURN => {
-                        println!("signal exit: ");
+                        //println!("signal exit: ");
                         flow.events.push(flow.signal_stack.pop().unwrap());
                     },
                     SYS_EXIT_GROUP => {
@@ -121,14 +123,14 @@ fn parse_file(fname: &str) -> Result<()> {
                     last.signal = SigStage::Exit(evt.head.ax[0]);
                     flow.signal_stack.push(last);
 
-                    println!("signal enter: {}", evt.head.ax[0]);
+                    //println!("signal enter: {}", evt.head.ax[0]);
                     let mut sig_req = TraceEvent::default();
                     sig_req.signal = SigStage::Enter(evt.head.ax[0]);
                     sig_req.head.inout = OUT;
                     sig_req.head.ax[0] = evt.head.ax[0];
                     flow.events.push(sig_req);
                 } else {
-                    println!("event out: {}", evt.head.ax[7]);
+                    //println!("event out: {}", evt.head.ax[7]);
                     last.result = evt.head.ax[0];
                     last.payloads.append(&mut evt.payloads);
                     last.head.inout = OUT;
