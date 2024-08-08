@@ -1,7 +1,7 @@
 //! Trace event.
 
 use crate::errno::errno_name;
-use crate::fs::FileSystemInfo;
+use crate::fs::{FileSystemInfo,mode_name};
 use crate::mmap::{map_name, prot_name};
 use crate::sysno::*;
 use crate::signal::{SigAction, sig_name};
@@ -343,7 +343,11 @@ impl TraceEvent {
 
     fn do_mknodat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         assert!(self.payloads.len() == 1);
-        args[0] = format!("{}",self.head.orig_a0);
+        if self.head.ax[0] as isize == -100 {
+            args[0] = String::from("AT_FDCWD");
+        }else{
+            args[0] = format!("{}",self.head.ax[0] as isize);
+        }
         args[1] = match self.payloads.first() {
             Some(payload) => {
                 match CStr::from_bytes_until_nul(&payload.data) {
@@ -357,7 +361,7 @@ impl TraceEvent {
                 "payload not found".to_string()
             }
         };
-
+        args[2] = mode_name(self.head.ax[2]);
         ("mknodat", 4, format!("{:#x}", self.result))
     }
 

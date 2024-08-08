@@ -129,3 +129,78 @@ fn f_flags_name(f_flags:u64) -> String {
     }
     names.join("|")
 }
+
+bitflags::bitflags! {
+    /// Node (file/directory) permission mode.
+    #[derive(Debug, Clone, Copy)]
+    pub struct VfsNodePerm: u16 {
+        /// Owner has read permission.
+        const OWNER_READ = 0o400;
+        /// Owner has write permission.
+        const OWNER_WRITE = 0o200;
+        /// Owner has execute permission.
+        const OWNER_EXEC = 0o100;
+
+        /// Group has read permission.
+        const GROUP_READ = 0o40;
+        /// Group has write permission.
+        const GROUP_WRITE = 0o20;
+        /// Group has execute permission.
+        const GROUP_EXEC = 0o10;
+
+        /// Others have read permission.
+        const OTHER_READ = 0o4;
+        /// Others have write permission.
+        const OTHER_WRITE = 0o2;
+        /// Others have execute permission.
+        const OTHER_EXEC = 0o1;
+    }
+}
+
+impl VfsNodePerm {
+    pub const fn rwx_buf(&self) -> [u8; 9] {
+        let mut perm = [b'-'; 9];
+        if self.contains(Self::OWNER_READ) {
+            perm[0] = b'r';
+        }
+        if self.contains(Self::OWNER_WRITE) {
+            perm[1] = b'w';
+        }
+        if self.contains(Self::OWNER_EXEC) {
+            perm[2] = b'x';
+        }
+        if self.contains(Self::GROUP_READ) {
+            perm[3] = b'r';
+        }
+        if self.contains(Self::GROUP_WRITE) {
+            perm[4] = b'w';
+        }
+        if self.contains(Self::GROUP_EXEC) {
+            perm[5] = b'x';
+        }
+        if self.contains(Self::OTHER_READ) {
+            perm[6] = b'r';
+        }
+        if self.contains(Self::OTHER_WRITE) {
+            perm[7] = b'w';
+        }
+        if self.contains(Self::OTHER_EXEC) {
+            perm[8] = b'x';
+        }
+        perm
+    }
+}
+
+pub fn mode_name(mode: u64) -> String {
+    let node_type = match mode >> 12 {
+        0o1 => "FIFO",
+        0o2 => "CharDevice",
+        0o4 => "Dir",
+        0o6 => "BlockDevice",
+        0o10 => "File",
+        0o12 => "SymLink",
+        0o14 => "Socket",
+        _ => "Unknown",
+    }.to_string();
+    format!("\"{} {}\"", node_type,std::str::from_utf8(&VfsNodePerm::from_bits_truncate((mode & 0o777) as u16).rwx_buf()).unwrap())
+}
