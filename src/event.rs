@@ -140,6 +140,7 @@ impl TraceEvent {
             SYS_WAIT4 => self.do_common("wait4", 4),
             SYS_GETDENTS64 => self.do_common("getdents64", 3),
             SYS_STATFS64 => self.do_statfs64(args),
+            SYS_MKNODAT => self.do_mknodat(args),
             _ => {
                 ("[unknown sysno]", 7, format!("{:#x}", self.result))
             },
@@ -338,6 +339,26 @@ impl TraceEvent {
             }
         }
         ("statfs64", 2, format!("{:#x}", self.result))
+    }
+
+    fn do_mknodat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        assert!(self.payloads.len() == 1);
+        args[0] = format!("{}",self.head.orig_a0);
+        args[1] = match self.payloads.first() {
+            Some(payload) => {
+                match CStr::from_bytes_until_nul(&payload.data) {
+                    Ok(content) => {
+                        format!("{:?}", content)
+                    }
+                    Err(_) => "[!parse_str_err!]".to_string(),
+                }
+            },
+            None => {
+                "payload not found".to_string()
+            }
+        };
+
+        ("mknodat", 4, format!("{:#x}", self.result))
     }
 
     fn do_execve(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
