@@ -10,6 +10,7 @@ use event::parse_sigaction;
 use sysno::*;
 use event::SigStage;
 
+mod fs;
 mod errno;
 mod event;
 mod mmap;

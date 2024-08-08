@@ -5,8 +5,10 @@
 pub const SYS_GETCWD: u64 = 0x11;
 pub const SYS_FCNTL: u64 = 0x19;
 pub const SYS_IOCTL: u64 = 0x1d;
+pub const SYS_MKNODAT: u64 = 0x21;
 pub const SYS_MKDIRAT: u64 = 0x22;
 pub const SYS_UNLINKAT: u64 = 0x23;
+pub const SYS_STATFS64: u64 = 0x2b;
 pub const SYS_MOUNT: u64 = 0x28;
 pub const SYS_FTRUNCATE: u64 = 0x2e;
 pub const SYS_FACCESSAT: u64 = 0x30;
