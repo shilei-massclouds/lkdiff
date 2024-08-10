@@ -1,14 +1,14 @@
 //! Trace event.
 
 use crate::errno::errno_name;
-use crate::fs::{FileSystemInfo,mode_name};
+use crate::fs::{mode_name, FileSystemInfo};
 use crate::mmap::{map_name, prot_name};
+use crate::signal::{sig_name, SigAction};
 use crate::sysno::*;
-use crate::signal::{SigAction, sig_name};
+use std::collections::HashSet;
 use std::ffi::CStr;
 use std::fmt::{Display, Formatter};
 use std::mem;
-use std::collections::HashSet;
 
 pub const USER_ECALL: u64 = 8;
 
@@ -129,7 +129,7 @@ impl TraceEvent {
 
             SYS_PRLIMIT64 => self.do_common("prlimit64", 4),
             SYS_GETRANDOM => self.do_common("getrandom", 3),
-            SYS_KILL=> self.do_common("kill", 2),
+            SYS_KILL => self.do_common("kill", 2),
             SYS_RT_SIGACTION => self.do_rt_sigaction(args),
             SYS_RT_SIGPROCMASK => self.do_common("sigprocmask", 4),
             SYS_CLONE => self.do_common("clone", 5),
@@ -141,9 +141,21 @@ impl TraceEvent {
             SYS_GETDENTS64 => self.do_common("getdents64", 3),
             SYS_STATFS64 => self.do_statfs64(args),
             SYS_MKNODAT => self.do_mknodat(args),
-            _ => {
-                ("[unknown sysno]", 7, format!("{:#x}", self.result))
-            },
+            SYS_GETCWD => self.do_getcwd(args),
+            SYS_UNLINKAT => self.do_unlinkat(args),
+            SYS_SETITIMER => self.do_common("setitimer", 3),
+            SYS_MUNMAP => self.do_common("munmap", 2),
+            SYS_MSYNC => self.do_common("msync",3),
+            SYS_MOUNT => self.do_mount(args),
+            SYS_MKDIRAT => self.do_mkdirat(args),
+            SYS_CHDIR => self.do_chdir(args),
+            SYS_FCHMODAT => self.do_fchmodat(args),
+            SYS_FCHOWNAT => self.do_fchownat(args),
+            SYS_GETPPID => self.do_common("getppid", 0),
+            SYS_GETGID => self.do_common("getgid", 0),
+            SYS_SETPGID => self.do_common("setpgid", 2),
+            SYS_FTRUNCATE => self.do_common("ftruncate", 2),
+            _ => ("[unknown sysno]", 7, format!("{:#x}", self.result)),
         }
     }
 
@@ -267,9 +279,9 @@ impl TraceEvent {
         args[0] = sig_name(signum);
         args[index] = sig_action.to_string();
         ("rt_sigaction", 3, format!("{:#x}", self.result))
-     }
+    }
 
-    fn do_mprotect(&self,args: &mut Vec<String>) -> (&'static str, usize, String) {
+    fn do_mprotect(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         if self.head.ax[0] == 0 {
             args[0] = String::from("NULL");
         }
@@ -328,14 +340,16 @@ impl TraceEvent {
                         Err(_) => "[!parse_str_err!]".to_string(),
                     };
                     args[0] = fname;
-                },
+                }
                 1 => {
                     let mut buf = [0u8; 120];
                     buf.clone_from_slice(&payload.data[..120]);
                     let buf = unsafe { mem::transmute::<[u8; 120], FileSystemInfo>(buf) };
                     args[1] = buf.to_string();
                 }
-                _ => { unreachable!() }
+                _ => {
+                    unreachable!()
+                }
             }
         }
         ("statfs64", 2, format!("{:#x}", self.result))
@@ -345,26 +359,140 @@ impl TraceEvent {
         assert!(self.payloads.len() == 1);
         if self.head.ax[0] as isize == -100 {
             args[0] = String::from("AT_FDCWD");
-        }else{
-            args[0] = format!("{}",self.head.ax[0] as isize);
+        } else {
+            args[0] = format!("{}", self.head.ax[0] as isize);
         }
         args[1] = match self.payloads.first() {
-            Some(payload) => {
-                match CStr::from_bytes_until_nul(&payload.data) {
-                    Ok(content) => {
-                        format!("{:?}", content)
-                    }
-                    Err(_) => "[!parse_str_err!]".to_string(),
+            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
+                Ok(content) => {
+                    format!("{:?}", content)
                 }
+                Err(_) => "[!parse_str_err!]".to_string(),
             },
-            None => {
-                "payload not found".to_string()
-            }
+            None => "payload not found".to_string(),
         };
         args[2] = mode_name(self.head.ax[2]);
         ("mknodat", 4, format!("{:#x}", self.result))
     }
 
+    fn do_getcwd(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        assert!(self.payloads.len() == 1);
+        args[0] = match self.payloads.first() {
+            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
+                Ok(content) => {
+                    format!("{:?}", content)
+                }
+                Err(_) => "[!parse_str_err!]".to_string(),
+            },
+            None => "payload not found".to_string(),
+        };
+        ("getcwd", 2, format!("{:#x}", self.result))
+    }
+
+    fn do_mkdirat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        assert!(self.payloads.len() == 1);
+        if self.head.ax[0] as isize == -100 {
+            args[0] = String::from("AT_FDCWD");
+        } else {
+            args[0] = format!("{}", self.head.ax[0] as isize);
+        }
+        args[1] = match self.payloads.first() {
+            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
+                Ok(content) => {
+                    format!("{:?}", content)
+                }
+                Err(_) => "[!parse_str_err!]".to_string(),
+            },
+            None => "payload not found".to_string(),
+        };
+        args[2] = mode_name(self.head.ax[2]);
+        ("mkdirat", 3, format!("{:#x}", self.result))
+    }
+    fn do_unlinkat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        assert!(self.payloads.len() == 1);
+        args[0] = if self.head.ax[0] as isize == -100 {
+            String::from("AT_FDCWD")
+        } else {
+            format!("{}", self.head.ax[0] as isize)
+        };
+        args[1] = match self.payloads.first() {
+            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
+                Ok(content) => {
+                    format!("{:?}", content)
+                }
+                Err(_) => "[!parse_str_err!]".to_string(),
+            },
+            None => "payload not found".to_string(),
+        };
+        ("unlinkat", 3, format!("{:#x}", self.result))
+    }
+
+    fn do_mount(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        assert!(self.payloads.len() == 1);
+        args[0] = match self.payloads.first() {
+            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
+                Ok(content) => {
+                    format!("{:?}", content)
+                }
+                Err(_) => "[!parse_str_err!]".to_string(),
+            },
+            None => "payload not found".to_string(),
+        };
+        ("mount", 2, format!("{:#x}", self.result))
+    }
+
+    fn do_fchmodat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        assert!(self.payloads.len() == 1);
+        if self.head.ax[0] as isize == -100 {
+            args[0] = String::from("AT_FDCWD");
+        } else {
+            args[0] = format!("{}", self.head.ax[0] as isize);
+        }
+        args[1] = match self.payloads.first() {
+            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
+                Ok(content) => {
+                    format!("{:?}", content)
+                }
+                Err(_) => "[!parse_str_err!]".to_string(),
+            },
+            None => "payload not found".to_string(),
+        };
+        args[2] = mode_name(self.head.ax[2]);
+        ("fchmodat", 3, format!("{:#x}", self.result))
+    }
+
+    fn do_fchownat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        assert!(self.payloads.len() == 1);
+        if self.head.ax[0] as isize == -100 {
+            args[0] = String::from("AT_FDCWD");
+        } else {
+            args[0] = format!("{}", self.head.ax[0] as isize);
+        }
+        args[1] = match self.payloads.first() {
+            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
+                Ok(content) => {
+                    format!("{:?}", content)
+                }
+                Err(_) => "[!parse_str_err!]".to_string(),
+            },
+            None => "payload not found".to_string(),
+        };
+        ("fchownat", 5, format!("{:#x}", self.result))
+    }
+
+    fn do_chdir(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        assert!(self.payloads.len() == 1);
+        args[0] = match self.payloads.first() {
+            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
+                Ok(content) => {
+                    format!("{:?}", content)
+                }
+                Err(_) => "[!parse_str_err!]".to_string(),
+            },
+            None => "payload not found".to_string(),
+        };
+        ("chdir", 1, format!("{:#x}", self.result))
+    }
     fn do_execve(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         let mut argv = Vec::new();
         let mut envp = Vec::new();
@@ -376,14 +504,14 @@ impl TraceEvent {
                     }
                     Err(_) => "[!parse_str_err!]".to_string(),
                 };
-            }else if payload.index == 1 {
+            } else if payload.index == 1 {
                 argv.push(match CStr::from_bytes_until_nul(&payload.data) {
                     Ok(content) => {
                         format!("{:?}", content)
                     }
                     Err(_) => "[!parse_str_err!]".to_string(),
                 })
-            }else if payload.index == 2 {
+            } else if payload.index == 2 {
                 envp.push(match CStr::from_bytes_until_nul(&payload.data) {
                     Ok(content) => {
                         format!("{:?}", content)
@@ -394,7 +522,7 @@ impl TraceEvent {
         }
         args[1] = format!("{{{}}}", argv.join(", "));
         args[2] = format!("{{{}}}", envp.join(", "));
-        ("execve",3, format!("{:#x}", self.result))
+        ("execve", 3, format!("{:#x}", self.result))
     }
 }
 
@@ -403,10 +531,10 @@ impl Display for TraceEvent {
         match self.signal {
             SigStage::Enter(signo) => {
                 return write!(fmt, "Signal[{}] enter..", sig_name(signo));
-            },
+            }
             SigStage::Exit(signo) => {
                 writeln!(fmt, "Signal[{}] exit..", sig_name(signo))?;
-            },
+            }
             _ => (),
         }
         assert_eq!(self.head.cause, USER_ECALL);
