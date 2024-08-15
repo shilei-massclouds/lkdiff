@@ -155,6 +155,7 @@ impl TraceEvent {
             SYS_GETGID => self.do_common("getgid", 0),
             SYS_SETPGID => self.do_common("setpgid", 2),
             SYS_FTRUNCATE => self.do_common("ftruncate", 2),
+            SYS_UTIMENSAT => self.do_utimensat(args),
             _ => ("[unknown sysno]", 7, format!("{:#x}", self.result)),
         }
     }
@@ -524,6 +525,25 @@ impl TraceEvent {
         args[1] = format!("{{{}}}", argv.join(", "));
         args[2] = format!("{{{}}}", envp.join(", "));
         ("execve", 3, format!("{:#x}", self.result))
+    }
+
+    fn do_utimensat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        assert!(self.payloads.len() == 1);
+        if self.head.ax[0] as isize == -100 {
+            args[0] = String::from("AT_FDCWD");
+        } else {
+            args[0] = format!("{}", self.head.ax[0] as isize);
+        }
+        args[1] = match self.payloads.first() {
+            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
+                Ok(content) => {
+                    format!("{:?}", content)
+                }
+                Err(_) => "[!parse_str_err!]".to_string(),
+            },
+            None => "payload not found".to_string(),
+        };
+        ("utimensat", 4, format!("{:#x}", self.result))
     }
 }
 

@@ -26,6 +26,7 @@ pub const SYS_WRITEV: u64 = 0x42;
 pub const SYS_PREAD64: u64 = 0x43;
 pub const SYS_READLINKAT: u64 = 0x4e;
 pub const SYS_FSTATAT: u64 = 0x4f;
+pub const SYS_UTIMENSAT: u64 = 0x58;
 pub const SYS_CAPGET: u64 = 0x5a;
 pub const SYS_EXIT: u64 = 0x5d;
 pub const SYS_EXIT_GROUP: u64 = 0x5e;
