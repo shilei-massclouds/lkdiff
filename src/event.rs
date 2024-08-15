@@ -1,7 +1,7 @@
 //! Trace event.
 
 use crate::errno::errno_name;
-use crate::fs::{mode_name, FileSystemInfo};
+use crate::fs::{mode_name, open_flags_name, FileSystemInfo};
 use crate::mmap::{map_name, prot_name};
 use crate::signal::{sig_name, SigAction};
 use crate::sysno::*;
@@ -188,6 +188,7 @@ impl TraceEvent {
             args[0] = "AT_FDCWD".to_string();
         }
         self.do_path(args);
+        args[2] = open_flags_name(self.head.ax[2] as i32);
         self.do_common("openat", 4)
     }
 

@@ -204,3 +204,38 @@ pub fn mode_name(mode: u64) -> String {
     }.to_string();
     format!("\"{} {}\"", node_type,std::str::from_utf8(&VfsNodePerm::from_bits_truncate((mode & 0o777) as u16).rwx_buf()).unwrap())
 }
+
+pub const O_ACCMODE:    i32 = 0o003;
+pub const O_RDONLY:     i32 = 0o000;
+pub const O_WRONLY:     i32 = 0o001;
+pub const O_RDWR:       i32 = 0o002;
+pub const O_CREAT:      i32 = 0o100;
+pub const O_TRUNC:      i32 = 0o001000;
+pub const O_APPEND:     i32 = 0o002000;
+pub const O_DIRECTORY:  i32 = 0o200000; /* must be a directory */
+
+pub fn open_flags_name(flags: i32) -> String {
+    let mut names : Vec<String> = vec![];
+    if flags & O_ACCMODE == O_RDONLY {
+        names.push("O_RDONLY".to_string());
+    }
+    if flags & O_ACCMODE == O_WRONLY {
+        names.push("O_WRONLY".to_string());
+    }
+    if flags & O_ACCMODE == O_RDWR {
+        names.push("O_RDWR".to_string());
+    }
+    if flags & O_CREAT != 0 {
+        names.push("O_CREAT".to_string());
+    }
+    if flags & O_TRUNC != 0 {
+        names.push("O_TRUNC".to_string());
+    }
+    if flags & O_APPEND != 0 {
+        names.push("O_APPEND".to_string());
+    }
+    if flags & O_DIRECTORY != 0 {
+        names.push("O_DIRECTORY".to_string());
+    }
+    names.join("|")
+}
