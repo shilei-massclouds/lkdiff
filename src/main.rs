@@ -17,6 +17,7 @@ mod mmap;
 #[allow(unused)]
 mod sysno;
 mod signal;
+mod sys;
 
 const IN: u64 = 0;
 const OUT: u64 = 1;

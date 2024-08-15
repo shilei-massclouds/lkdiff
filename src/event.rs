@@ -5,6 +5,8 @@ use crate::fs::{mode_name, open_flags_name, FileSystemInfo};
 use crate::mmap::{map_name, prot_name};
 use crate::signal::{sig_name, SigAction};
 use crate::sysno::*;
+use crate::sys;
+
 use std::collections::HashSet;
 use std::ffi::CStr;
 use std::fmt::{Display, Formatter};
@@ -127,7 +129,7 @@ impl TraceEvent {
             SYS_MMAP => self.do_mmap(args),
             SYS_MPROTECT => self.do_mprotect(args),
 
-            SYS_PRLIMIT64 => self.do_common("prlimit64", 4),
+            SYS_PRLIMIT64 => self.do_prlimit64(args),
             SYS_GETRANDOM => self.do_common("getrandom", 3),
             SYS_KILL => self.do_common("kill", 2),
             SYS_RT_SIGACTION => self.do_rt_sigaction(args),
@@ -544,6 +546,21 @@ impl TraceEvent {
             None => "payload not found".to_string(),
         };
         ("utimensat", 4, format!("{:#x}", self.result))
+    }
+
+    fn do_prlimit64(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        args[0] = match self.head.ax[1] {
+            sys::RLIMIT_STACK => "RLIMIT_STACK".to_string(),
+            sys::RLIMIT_NOFILE => "RLIMIT_NOFILE".to_string(),
+            _ => format!("not implemented: Resource Type: {}",self.head.ax[1]),
+        };
+        for payload in self.payloads.iter() {
+            let mut buf = [0u8; 16];
+            buf.clone_from_slice(&payload.data[..16]);
+            let buf = unsafe { mem::transmute::<[u8; 16], sys::RLimit64>(buf) };
+            args[payload.index] = buf.to_string();
+        }
+        ("prlimit64", 4, format!("{:#x}", self.result))
     }
 }
 
