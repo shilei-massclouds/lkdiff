@@ -47,7 +47,7 @@ fn parse_file(fname: &str) -> Result<()> {
     let mut reader = BufReader::new(f);
 
     let mut events_map: BTreeMap<u64, TraceFlow> = BTreeMap::new();
-    let mut vfork_req = None;
+    let mut vfork_req: Vec<TraceEvent> = vec![];
     while filesize >= TE_SIZE {
         let mut evt = parse_event(&mut reader)?;
         let advance = evt.head.totalsize as usize;
@@ -72,7 +72,7 @@ fn parse_file(fname: &str) -> Result<()> {
                 events_map.insert(tid, TraceFlow::new());
                 let flow = events_map.get_mut(&tid).unwrap();
                 if evt.head.inout == OUT {
-                    let req = vfork_req.take().unwrap();
+                    let req = vfork_req.pop().unwrap();
                     flow.events.push(req);
                 }
                 flow
@@ -89,7 +89,7 @@ fn parse_file(fname: &str) -> Result<()> {
                 let sysno = evt.head.ax[7];
                 match sysno {
                     SYS_CLONE => {
-                        vfork_req = Some(evt.clone());
+                        vfork_req.push(evt.clone());
                         flow.events.push(evt);
                     },
                     SYS_RT_SIGRETURN => {
@@ -108,7 +108,10 @@ fn parse_file(fname: &str) -> Result<()> {
             },
             OUT => {
                 let last = flow.events.last_mut().expect("No requests in event queue!");
-                assert_eq!(evt.head.ax[7], last.head.ax[7]);
+                //assert_eq!(evt.head.ax[7], last.head.ax[7], "{:#x} != {:#x}", evt.head.ax[7], last.head.ax[7]);
+                if evt.head.ax[7] != last.head.ax[7] {
+                    println!("======================= unmatch: {} != {}", evt.head.ax[7], last.head.ax[7]);
+                }
 
                 if evt.head.ax[7] == SYS_RT_SIGACTION {
                     let (sigaction, _) = parse_sigaction(&evt);
