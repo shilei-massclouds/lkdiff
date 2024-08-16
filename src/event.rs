@@ -1,7 +1,7 @@
 //! Trace event.
 
 use crate::errno::errno_name;
-use crate::fs::{mode_name, open_flags_name, FileSystemInfo};
+use crate::fs::{mode_name, open_flags_name, FileSystemInfo, VfsNodePerm};
 use crate::mmap::{map_name, prot_name};
 use crate::signal::{sig_name, SigAction};
 use crate::sysno::*;
@@ -158,6 +158,8 @@ impl TraceEvent {
             SYS_SETPGID => self.do_common("setpgid", 2),
             SYS_FTRUNCATE => self.do_common("ftruncate", 2),
             SYS_UTIMENSAT => self.do_utimensat(args),
+            SYS_UMASK => self.do_umask(args),
+            SYS_SYMLINKAT => self.do_symlinkat(args),
             _ => ("[unknown sysno]", 7, format!("{:#x}", self.result)),
         }
     }
@@ -303,12 +305,7 @@ impl TraceEvent {
             let payload = &self.payloads.first().unwrap();
             assert_eq!(payload.inout, crate::OUT);
             assert_eq!(payload.index, 1);
-            args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
-                Ok(content) => {
-                    format!("{:?}", content)
-                }
-                Err(_) => "[!parse_str_err!]".to_string(),
-            };
+            args[payload.index] = cstr_bytes_to_string(&payload.data);
         }
 
         ("write", 3, format!("{:#x}", self.result))
@@ -321,12 +318,7 @@ impl TraceEvent {
             assert_eq!(payload.inout, crate::OUT);
             assert_eq!(payload.index, 1);
 
-            args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
-                Ok(content) => {
-                    format!("{:?}", content)
-                }
-                Err(_) => "[!parse_str_err!]".to_string(),
-            };
+            args[payload.index] = cstr_bytes_to_string(&payload.data);
         }
 
         ("read", 3, format!("{:#x}", self.result))
@@ -367,12 +359,7 @@ impl TraceEvent {
             args[0] = format!("{}", self.head.ax[0] as isize);
         }
         args[1] = match self.payloads.first() {
-            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
-                Ok(content) => {
-                    format!("{:?}", content)
-                }
-                Err(_) => "[!parse_str_err!]".to_string(),
-            },
+            Some(payload) => cstr_bytes_to_string(&payload.data),
             None => "payload not found".to_string(),
         };
         args[2] = mode_name(self.head.ax[2]);
@@ -382,12 +369,7 @@ impl TraceEvent {
     fn do_getcwd(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         assert!(self.payloads.len() == 1);
         args[0] = match self.payloads.first() {
-            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
-                Ok(content) => {
-                    format!("{:?}", content)
-                }
-                Err(_) => "[!parse_str_err!]".to_string(),
-            },
+            Some(payload) => cstr_bytes_to_string(&payload.data),
             None => "payload not found".to_string(),
         };
         ("getcwd", 2, format!("{:#x}", self.result))
@@ -401,12 +383,7 @@ impl TraceEvent {
             args[0] = format!("{}", self.head.ax[0] as isize);
         }
         args[1] = match self.payloads.first() {
-            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
-                Ok(content) => {
-                    format!("{:?}", content)
-                }
-                Err(_) => "[!parse_str_err!]".to_string(),
-            },
+            Some(payload) => cstr_bytes_to_string(&payload.data),
             None => "payload not found".to_string(),
         };
         args[2] = mode_name(self.head.ax[2]);
@@ -420,12 +397,7 @@ impl TraceEvent {
             format!("{}", self.head.ax[0] as isize)
         };
         args[1] = match self.payloads.first() {
-            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
-                Ok(content) => {
-                    format!("{:?}", content)
-                }
-                Err(_) => "[!parse_str_err!]".to_string(),
-            },
+            Some(payload) => cstr_bytes_to_string(&payload.data),
             None => "payload not found".to_string(),
         };
         ("unlinkat", 3, format!("{:#x}", self.result))
@@ -434,12 +406,7 @@ impl TraceEvent {
     fn do_mount(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         assert!(self.payloads.len() == 1);
         args[0] = match self.payloads.first() {
-            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
-                Ok(content) => {
-                    format!("{:?}", content)
-                }
-                Err(_) => "[!parse_str_err!]".to_string(),
-            },
+            Some(payload) => cstr_bytes_to_string(&payload.data),
             None => "payload not found".to_string(),
         };
         ("mount", 2, format!("{:#x}", self.result))
@@ -453,12 +420,7 @@ impl TraceEvent {
             args[0] = format!("{}", self.head.ax[0] as isize);
         }
         args[1] = match self.payloads.first() {
-            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
-                Ok(content) => {
-                    format!("{:?}", content)
-                }
-                Err(_) => "[!parse_str_err!]".to_string(),
-            },
+            Some(payload) => cstr_bytes_to_string(&payload.data),
             None => "payload not found".to_string(),
         };
         args[2] = mode_name(self.head.ax[2]);
@@ -473,12 +435,7 @@ impl TraceEvent {
             args[0] = format!("{}", self.head.ax[0] as isize);
         }
         args[1] = match self.payloads.first() {
-            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
-                Ok(content) => {
-                    format!("{:?}", content)
-                }
-                Err(_) => "[!parse_str_err!]".to_string(),
-            },
+            Some(payload) => cstr_bytes_to_string(&payload.data),
             None => "payload not found".to_string(),
         };
         ("fchownat", 5, format!("{:#x}", self.result))
@@ -487,12 +444,7 @@ impl TraceEvent {
     fn do_chdir(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         assert!(self.payloads.len() == 1);
         args[0] = match self.payloads.first() {
-            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
-                Ok(content) => {
-                    format!("{:?}", content)
-                }
-                Err(_) => "[!parse_str_err!]".to_string(),
-            },
+            Some(payload) => cstr_bytes_to_string(&payload.data),
             None => "payload not found".to_string(),
         };
         ("chdir", 1, format!("{:#x}", self.result))
@@ -502,26 +454,11 @@ impl TraceEvent {
         let mut envp = Vec::new();
         for payload in &self.payloads {
             if payload.index == 0 {
-                args[payload.index] = match CStr::from_bytes_until_nul(&payload.data) {
-                    Ok(content) => {
-                        format!("{:?}", content)
-                    }
-                    Err(_) => "[!parse_str_err!]".to_string(),
-                };
+                args[payload.index] = cstr_bytes_to_string(&payload.data);
             } else if payload.index == 1 {
-                argv.push(match CStr::from_bytes_until_nul(&payload.data) {
-                    Ok(content) => {
-                        format!("{:?}", content)
-                    }
-                    Err(_) => "[!parse_str_err!]".to_string(),
-                })
+                argv.push(cstr_bytes_to_string(&payload.data))
             } else if payload.index == 2 {
-                envp.push(match CStr::from_bytes_until_nul(&payload.data) {
-                    Ok(content) => {
-                        format!("{:?}", content)
-                    }
-                    Err(_) => "[!parse_str_err!]".to_string(),
-                })
+                envp.push(cstr_bytes_to_string(&payload.data))
             }
         }
         args[1] = format!("{{{}}}", argv.join(", "));
@@ -537,12 +474,7 @@ impl TraceEvent {
             args[0] = format!("{}", self.head.ax[0] as isize);
         }
         args[1] = match self.payloads.first() {
-            Some(payload) => match CStr::from_bytes_until_nul(&payload.data) {
-                Ok(content) => {
-                    format!("{:?}", content)
-                }
-                Err(_) => "[!parse_str_err!]".to_string(),
-            },
+            Some(payload) => cstr_bytes_to_string(&payload.data),
             None => "payload not found".to_string(),
         };
         ("utimensat", 4, format!("{:#x}", self.result))
@@ -561,6 +493,23 @@ impl TraceEvent {
             args[payload.index] = buf.to_string();
         }
         ("prlimit64", 4, format!("{:#x}", self.result))
+    }
+
+    fn do_umask(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        args[0] = String::from_utf8(VfsNodePerm::from_bits_truncate(self.head.orig_a0 as u16).rwx_buf().into_iter().collect::<Vec<u8>>()).unwrap();
+        ("umask", 1, format!("{:#x}", self.result))
+    }
+
+    fn do_symlinkat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        for payload in &self.payloads {
+            args[payload.index] = cstr_bytes_to_string(&payload.data)
+        }
+        args[1] = if self.head.ax[1] as isize == -100 {
+            String::from("AT_FDCWD")
+        } else {
+            format!("{}", self.head.ax[1] as isize)
+        };
+        ("symlinkat", 3, format!("{:#x}", self.result))
     }
 }
 
@@ -602,4 +551,13 @@ pub fn parse_sigaction(evt: &TraceEvent) -> (SigAction, usize) {
     buf.clone_from_slice(&payload.data[..24]);
     let sigaction = unsafe { mem::transmute::<[u8; 24], SigAction>(buf) };
     (sigaction, payload.index)
+}
+
+fn cstr_bytes_to_string(bytes: &[u8]) -> String {
+    match CStr::from_bytes_until_nul(bytes) {
+        Ok(content) => {
+            format!("{:?}", content)
+        }
+        Err(_) => "[!parse_str_err!]".to_string(),
+    }
 }
