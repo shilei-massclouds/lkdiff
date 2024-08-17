@@ -8,6 +8,7 @@ use std::ffi::CStr;
 use std::fmt::{Display, Formatter};
 use std::mem;
 use std::collections::HashSet;
+use crate::signal::{SIG_BLOCK, SIG_UNBLOCK, SIG_SETMASK};
 
 pub const USER_ECALL: u64 = 8;
 
@@ -130,7 +131,7 @@ impl TraceEvent {
             SYS_GETRANDOM => self.do_common("getrandom", 3),
             SYS_KILL=> self.do_common("kill", 2),
             SYS_RT_SIGACTION => self.do_rt_sigaction(args),
-            SYS_RT_SIGPROCMASK => self.do_common("sigprocmask", 4),
+            SYS_RT_SIGPROCMASK => self.do_rt_sigprocmask(args),
             SYS_CLONE => self.do_common("clone", 5),
             SYS_EXECVE => self.do_execve(args),
             SYS_GETTID => self.do_common("get_tid", 0),
@@ -264,7 +265,40 @@ impl TraceEvent {
         args[0] = sig_name(signum);
         args[index] = sig_action.to_string();
         ("rt_sigaction", 3, format!("{:#x}", self.result))
-     }
+    }
+
+    fn do_rt_sigprocmask(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        args[0] = match self.head.ax[0] {
+            SIG_BLOCK => "SIG_BLOCK",
+            SIG_UNBLOCK => "SIG_UNBLOCK",
+            SIG_SETMASK => "SIG_SETMASK",
+            _ => panic!("bad how"),
+        }.to_string();
+
+        let mut index = 0;
+        if self.head.ax[1] != 0 {
+            let payload = self.payloads.get(index).unwrap();
+            index += 1;
+            let mut buf = [0u8; 8];
+            buf.clone_from_slice(&payload.data[..8]);
+            let nset = unsafe { mem::transmute::<[u8; 8], u64>(buf) };
+            args[1] = format!("nset: {:#x}", nset);
+        } else {
+            args[1] = format!("nset: NULL");
+        }
+        if self.head.ax[2] != 0 {
+            let payload = self.payloads.get(index).unwrap();
+            index += 1;
+            let mut buf = [0u8; 8];
+            buf.clone_from_slice(&payload.data[..8]);
+            let oset = unsafe { mem::transmute::<[u8; 8], u64>(buf) };
+            args[2] = format!("oset: {:#x}", oset);
+        } else {
+            args[2] = format!("oset: NULL");
+        }
+        assert_eq!(index, self.payloads.len());
+        ("rt_sigprocmask", 4, format!("{:#x}", self.result))
+    }
 
     fn do_mprotect(&self,args: &mut Vec<String>) -> (&'static str, usize, String) {
         if self.head.ax[0] == 0 {

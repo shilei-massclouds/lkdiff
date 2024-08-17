@@ -1,6 +1,10 @@
 use std::fmt::Display;
 use crate::sysno::*;
 
+pub const SIG_BLOCK:    u64 = 0; // for blocking signals
+pub const SIG_UNBLOCK:  u64 = 1; // for unblocking signals
+pub const SIG_SETMASK:  u64 = 2; // for setting the signal mask
+
 // Note: No restorer in sigaction for riscv64.
 #[derive(Copy, Clone, Default)]
 pub struct SigAction {
@@ -16,19 +20,19 @@ pub const NSIG: usize = 64;
 pub const SA_RESTORER: usize = 0x4000000;
 pub const SA_RESTART: usize = 0x10000000;
 
-/* 
+/*
  * if a blocked call to one of the following interfaces is
  * interrupted by a signal handler, then the call is automatically
  * restarted after the signal handler returns if the SA_RESTART flag
  * was used; otherwise the call fails with the error EINTR:
- */      
+ */
 #[allow(dead_code)]
 pub const RESTART_SYSCALLS: [u64;5] = [
     SYS_READ,
     SYS_WRITE,
     SYS_WRITEV,
     SYS_IOCTL,
-    SYS_WAIT4,  
+    SYS_WAIT4,
 ];
 
 impl Display for SigAction {
