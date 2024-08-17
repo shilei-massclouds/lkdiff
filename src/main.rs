@@ -114,8 +114,9 @@ fn parse_file(fname: &str) -> Result<()> {
                 }
 
                 if evt.head.ax[7] == SYS_RT_SIGACTION {
-                    let (sigaction, _) = parse_sigaction(&evt);
-                    flow.sighand_set.insert(sigaction.handler);
+                    if let Some((sigaction, _)) = parse_sigaction(&evt) {
+                        flow.sighand_set.insert(sigaction.handler);
+                    }
                 }
 
                 // Todo: to distinguish signal by epc is NOT a proper method.

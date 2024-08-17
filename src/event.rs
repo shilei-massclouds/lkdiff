@@ -258,12 +258,12 @@ impl TraceEvent {
     }
 
     fn do_rt_sigaction(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
-        assert!(self.payloads.len() == 1);
         let signum = self.head.ax[0];
-
-        let (sig_action, index) = parse_sigaction(self);
         args[0] = sig_name(signum);
-        args[index] = sig_action.to_string();
+
+        if let Some((sig_action, index)) = parse_sigaction(self) {
+            args[index] = sig_action.to_string();
+        }
         ("rt_sigaction", 3, format!("{:#x}", self.result))
     }
 
@@ -416,10 +416,10 @@ impl Display for TraceEvent {
     }
 }
 
-pub fn parse_sigaction(evt: &TraceEvent) -> (SigAction, usize) {
-    let payload = evt.payloads.first().unwrap();
+pub fn parse_sigaction(evt: &TraceEvent) -> Option<(SigAction, usize)> {
+    let payload = evt.payloads.first()?;
     let mut buf = [0u8; 24];
     buf.clone_from_slice(&payload.data[..24]);
     let sigaction = unsafe { mem::transmute::<[u8; 24], SigAction>(buf) };
-    (sigaction, payload.index)
+    Some((sigaction, payload.index))
 }

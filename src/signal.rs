@@ -55,7 +55,11 @@ pub fn sa_flag_name(sa_flags: usize) -> String {
     if sa_flags & SA_RESTORER != 0 {
         names.push("SA_RESTORER".to_string());
     }
-    names.join("|")
+    if names.len() > 0 {
+        names.join("|")
+    } else {
+        String::from("0x0")
+    }
 }
 
 pub fn sig_name(signum: u64) -> String {
