@@ -213,6 +213,7 @@ pub const O_CREAT:      i32 = 0o100;
 pub const O_TRUNC:      i32 = 0o001000;
 pub const O_APPEND:     i32 = 0o002000;
 pub const O_DIRECTORY:  i32 = 0o200000; /* must be a directory */
+pub const O_NOFOLLOW:   i32 = 0o400000; /* don't follow links */
 
 pub fn open_flags_name(flags: i32) -> String {
     let mut names : Vec<String> = vec![];
@@ -236,6 +237,9 @@ pub fn open_flags_name(flags: i32) -> String {
     }
     if flags & O_DIRECTORY != 0 {
         names.push("O_DIRECTORY".to_string());
+    }
+    if flags & O_NOFOLLOW != 0 {
+        names.push("O_NOFOLLOW".to_string());
     }
     names.join("|")
 }
