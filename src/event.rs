@@ -120,6 +120,7 @@ impl TraceEvent {
     pub fn handle_syscall(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         match self.head.ax[7] {
             SYS_IOCTL => self.do_common("ioctl", 3),
+            SYS_DUP3 => self.do_common("dup3", 3),
             SYS_FACCESSAT => self.do_faccessat(args),
             SYS_OPENAT => self.do_openat(args),
             SYS_CLOSE => self.do_common("close", 1),

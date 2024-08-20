@@ -3,6 +3,7 @@
 ///
 
 pub const SYS_GETCWD: u64 = 0x11;
+pub const SYS_DUP3: u64 = 0x18;
 pub const SYS_FCNTL: u64 = 0x19;
 pub const SYS_IOCTL: u64 = 0x1d;
 pub const SYS_MKDIRAT: u64 = 0x22;

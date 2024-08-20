@@ -62,7 +62,9 @@ fn parse_file(fname: &str) -> Result<()> {
             IN => {
                 //println!("request: {}", evt.head.ax[7]);
                 if let Some(last) = flow.events.last() {
-                    assert_eq!(last.head.inout, OUT);
+                    if last.head.inout != OUT {
+                        println!("======================= might be killed: {}", last.head.ax[7]);
+                    }
                 }
 
                 let sysno = evt.head.ax[7];
@@ -94,6 +96,7 @@ fn parse_file(fname: &str) -> Result<()> {
 
                 if evt.head.ax[7] == SYS_RT_SIGACTION {
                     if let Some((sigaction, _)) = parse_sigaction(&evt) {
+                        println!("============ sigaction.handler {:#x}", sigaction.handler);
                         flow.sighand_set.insert(sigaction.handler);
                     }
                 }
