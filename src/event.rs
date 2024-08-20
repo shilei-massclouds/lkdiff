@@ -1,5 +1,7 @@
 //! Trace event.
 
+use std::fs::File;
+use std::io::BufReader;
 use crate::errno::errno_name;
 use crate::mmap::{map_name, prot_name};
 use crate::sysno::*;
@@ -9,6 +11,12 @@ use std::fmt::{Display, Formatter};
 use std::mem;
 use std::collections::HashSet;
 use crate::signal::{SIG_BLOCK, SIG_UNBLOCK, SIG_SETMASK};
+use crate::payload::parse_payloads;
+use std::io::prelude::*;
+use std::io::Result;
+
+pub const LK_MAGIC: u16 = 0xABCD;
+pub const TE_SIZE: usize = mem::size_of::<TraceHead>();
 
 pub const USER_ECALL: u64 = 8;
 
@@ -54,9 +62,10 @@ pub enum SigStage {
 #[derive(Clone, Debug, Default)]
 pub struct TraceEvent {
     pub head: TraceHead,
-    pub result: u64,
+    pub result: i64,
     pub payloads: Vec<TracePayload>,
     pub signal: SigStage,
+    pub raw_fmt: bool,
 }
 
 pub struct TraceFlow {
@@ -123,8 +132,9 @@ impl TraceEvent {
             SYS_SET_ROBUST_LIST => self.do_common("set_robust_list", 2),
             SYS_CLOCK_GETTIME => self.do_common("clock_gettime", 2),
             SYS_UNAME => self.do_uname(args),
-            SYS_BRK => self.do_common("brk", 1),
+            SYS_BRK => self.do_brk(args),
             SYS_MMAP => self.do_mmap(args),
+            SYS_MUNMAP => self.do_common("munmap", 2),
             SYS_MPROTECT => self.do_mprotect(args),
 
             SYS_PRLIMIT64 => self.do_common("prlimit64", 4),
@@ -139,16 +149,18 @@ impl TraceEvent {
             SYS_TGKILL => self.do_common("tgkill", 3),
             SYS_WAIT4 => self.do_common("wait4", 4),
             SYS_GETDENTS64 => self.do_common("getdents64", 3),
-            _ => {
-                ("[unknown sysno]", 7, format!("{:#x}", self.result))
-            },
+            _ => ("", 7, format!("{:#x}", self.result)),
         }
+    }
+
+    fn do_brk(&self, _args: &mut Vec<String>) -> (&'static str, usize, String) {
+        ("brk", 1, format!("{:#x}", self.result))
     }
 
     #[inline]
     fn do_common(&self, name: &'static str, argc: usize) -> (&'static str, usize, String) {
-        if (self.result as i64) <= 0 {
-            (name, argc, format!("{}", errno_name(self.result as i32)))
+        if self.result <= 0 {
+            (name, argc, format!("{}", errno_name(self.result)))
         } else {
             (name, argc, format!("{:#x}", self.result))
         }
@@ -244,13 +256,15 @@ impl TraceEvent {
     }
 
     fn do_mmap(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
-        if self.head.ax[0] == 0 {
-            args[0] = String::from("NULL");
+        if !self.raw_fmt {
+            if self.head.ax[0] == 0 {
+                args[0] = String::from("NULL");
+            }
+            args[2] = prot_name(self.head.ax[2]);
+            args[3] = map_name(self.head.ax[3]);
+            args[4] = format!("{}", self.head.ax[4] as isize); // fd
         }
-        args[2] = prot_name(self.head.ax[2]);
-        args[3] = map_name(self.head.ax[3]);
-        args[4] = format!("{}", self.head.ax[4] as isize); // fd
-        if (self.result as i64) <= 0 {
+        if self.result <= 0 {
             ("mmap", 6, String::from("MAP_FAILED")) // On error, the value MAP_FAILED(that is, (void *) -1) is returned,
         } else {
             ("mmap", 6, format!("{:#x}", self.result)) // On success, mmap() returns a pointer to the mapped area.
@@ -305,8 +319,8 @@ impl TraceEvent {
             args[0] = String::from("NULL");
         }
         args[2] = prot_name(self.head.ax[2]);
-        if (self.result as i64) <= 0 {
-            ("mprotect", 3, format!("{}", errno_name(self.result as i32)))
+        if self.result <= 0 {
+            ("mprotect", 3, format!("{}", errno_name(self.result)))
         } else {
             ("mprotect", 3, format!("{:#x}", self.result))
         }
@@ -402,13 +416,17 @@ impl Display for TraceEvent {
             .map(|arg| format!("{:#x}", arg))
             .collect::<Vec<_>>();
 
-        let (syscall, argc, result) = self.handle_syscall(&mut args);
+        let (sysname, argc, result) = self.handle_syscall(&mut args);
+        let sysname = if sysname.len() > 0 {
+            sysname.to_owned()
+        } else {
+            format!("sys_{}", self.head.ax[7])
+        };
 
         write!(
             fmt,
-            "[{}]{}({}) -> {}, usp: {:#x}",
-            self.head.ax[7],
-            syscall,
+            "{}({}) -> {}, usp: {:#x}",
+            sysname,
             args[..argc].join(", "),
             result,
             self.head.usp
@@ -422,4 +440,39 @@ pub fn parse_sigaction(evt: &TraceEvent) -> Option<(SigAction, usize)> {
     buf.clone_from_slice(&payload.data[..24]);
     let sigaction = unsafe { mem::transmute::<[u8; 24], SigAction>(buf) };
     Some((sigaction, payload.index))
+}
+
+pub fn print_events(tid: u64, events: &Vec<TraceEvent>) {
+    println!("Task[{:#x}] ========>", tid);
+    for (idx, evt) in events.iter().enumerate() {
+        println!("[{}]: {}", idx, evt);
+    }
+    println!();
+}
+
+pub fn parse_event(reader: &mut BufReader<File>) -> Result<TraceEvent> {
+    let mut buf = [0u8; TE_SIZE];
+    reader.read_exact(&mut buf)?;
+    let head = unsafe { mem::transmute::<[u8; TE_SIZE], TraceHead>(buf) };
+    assert_eq!(head.cause, USER_ECALL);
+
+    //println!("a7: {} total: {}", head.ax[7], head.totalsize);
+    let payloads = if head.totalsize as usize > head.headsize as usize {
+        parse_payloads(
+            reader,
+            head.inout,
+            head.totalsize as usize - head.headsize as usize,
+        )?
+    } else {
+        vec![]
+    };
+
+    let evt = TraceEvent {
+        head,
+        result: 0,
+        payloads,
+        signal: SigStage::Empty,
+        raw_fmt: false,
+    };
+    Ok(evt)
 }

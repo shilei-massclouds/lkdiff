@@ -1,35 +1,14 @@
 use std::env;
 use std::fs::File;
-use std::io::prelude::*;
 use std::io::BufReader;
 use std::io::Result;
-use std::mem;
 use std::collections::BTreeMap;
-use event::{TraceHead, TracePayload, TraceEvent, TraceFlow, USER_ECALL};
-use event::parse_sigaction;
-use sysno::*;
-use event::SigStage;
-
-mod errno;
-mod event;
-mod mmap;
-#[allow(unused)]
-mod sysno;
-mod signal;
-
-const IN: u64 = 0;
-const OUT: u64 = 1;
-
-const LK_MAGIC: u16 = 0xABCD;
-const TE_SIZE: usize = mem::size_of::<TraceHead>();
-const PH_SIZE: usize = mem::size_of::<PayloadHead>();
-
-#[repr(C)]
-struct PayloadHead {
-    magic: u16,
-    index: u16,
-    size: u32,
-}
+use lkdiff::sysno::*;
+use lkdiff::event::{TraceEvent, TraceFlow, USER_ECALL};
+use lkdiff::event::parse_sigaction;
+use lkdiff::event::SigStage;
+use lkdiff::event::{print_events, LK_MAGIC, TE_SIZE, parse_event};
+use lkdiff::{IN, OUT};
 
 fn main() {
     let args: Vec<String> = env::args().collect();
@@ -135,7 +114,7 @@ fn parse_file(fname: &str) -> Result<()> {
                     flow.events.push(sig_req);
                 } else {
                     //println!("event out: {}", evt.head.ax[7]);
-                    last.result = evt.head.ax[0];
+                    last.result = evt.head.ax[0] as i64;
                     last.payloads.append(&mut evt.payloads);
                     last.head.inout = OUT;
                 }
@@ -151,70 +130,4 @@ fn parse_file(fname: &str) -> Result<()> {
         print_events(*id, &flow.events);
     }
     Ok(())
-}
-
-fn print_events(tid: u64, events: &Vec<TraceEvent>) {
-    println!("Task[{:#x}] ========>", tid);
-    for evt in events {
-        println!("{}", evt);
-    }
-    println!();
-}
-
-fn parse_event(reader: &mut BufReader<File>) -> Result<TraceEvent> {
-    let mut buf = [0u8; TE_SIZE];
-    reader.read_exact(&mut buf)?;
-    let head = unsafe { mem::transmute::<[u8; TE_SIZE], TraceHead>(buf) };
-    assert_eq!(head.cause, USER_ECALL);
-
-    //println!("a7: {} total: {}", head.ax[7], head.totalsize);
-    let payloads = if head.totalsize as usize > head.headsize as usize {
-        parse_payloads(
-            reader,
-            head.inout,
-            head.totalsize as usize - head.headsize as usize,
-        )?
-    } else {
-        vec![]
-    };
-
-    let evt = TraceEvent {
-        head,
-        result: 0,
-        payloads,
-        signal: SigStage::Empty,
-    };
-    Ok(evt)
-}
-
-fn parse_payloads(
-    reader: &mut BufReader<File>,
-    inout: u64,
-    mut size: usize,
-) -> Result<Vec<TracePayload>> {
-    assert!(size > PH_SIZE);
-    let mut ret = vec![];
-    while size > 0 {
-        let payload = parse_payload(reader, inout)?;
-        size -= PH_SIZE + payload.data.len();
-        ret.push(payload);
-    }
-    Ok(ret)
-}
-
-fn parse_payload(reader: &mut BufReader<File>, inout: u64) -> Result<TracePayload> {
-    let mut buf = [0u8; PH_SIZE];
-    reader.read_exact(&mut buf)?;
-    let head = unsafe { mem::transmute::<[u8; PH_SIZE], PayloadHead>(buf) };
-    let mut data = Vec::with_capacity(head.size as usize);
-    unsafe {
-        data.set_len(head.size as usize);
-    }
-    reader.read_exact(&mut data)?;
-
-    Ok(TracePayload {
-        inout: inout,
-        index: head.index as usize,
-        data,
-    })
 }
