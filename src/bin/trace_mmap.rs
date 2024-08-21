@@ -29,7 +29,7 @@ fn parse_file(fname: &str) -> Result<()> {
 
     let mut out_map: HashMap<u64, Arc<File>> = HashMap::new();
     while filesize >= TE_SIZE {
-        let mut evt = parse_event(&mut reader)?;
+        let mut evt = parse_event(&mut reader, 0)?;
         let advance = evt.head.totalsize as usize;
         assert_eq!(evt.head.magic, LK_MAGIC);
         assert_eq!(evt.head.headsize, TE_SIZE as u16);

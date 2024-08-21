@@ -10,3 +10,4 @@ name = "trace_mmap"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+once_cell = "1.19.0"
