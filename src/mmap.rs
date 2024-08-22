@@ -66,8 +66,8 @@ pub fn map_name(map:u64) -> String {
         MAP_SHARED => names.push("MAP_SHARED".to_string()),
         MAP_PRIVATE => names.push("MAP_PRIVATE".to_string()),
         _ => names.push("MAP_UNKNOWN".to_string()),
-    } 
-    
+    }
+
     if map & MAP_FIXED != 0 {
         names.push("MAP_FIXED".to_string());
     }
