@@ -37,6 +37,7 @@ fn parse_file(fname: &str, level: usize) -> Result<()> {
     let mut sighand_set: HashSet<usize> = HashSet::new();
     let mut events_map: BTreeMap<u64, TraceFlow> = BTreeMap::new();
     let mut vfork_req: Vec<TraceEvent> = vec![];
+    let mut task_seq: Vec<u64> = vec![];
     while filesize >= TE_SIZE {
         let mut evt = parse_event(&mut reader, level)?;
         let advance = evt.head.totalsize as usize;
@@ -58,6 +59,7 @@ fn parse_file(fname: &str, level: usize) -> Result<()> {
             None => {
                 // Start of each event is either req or clone.replay
                 assert!(evt.head.inout == IN || evt.head.ax[7] == SYS_CLONE);
+                task_seq.push(tid);
                 //println!("New events: {:#x}", tid);
                 events_map.insert(tid, TraceFlow::new());
                 let flow = events_map.get_mut(&tid).unwrap();
@@ -107,7 +109,7 @@ fn parse_file(fname: &str, level: usize) -> Result<()> {
 
                 if evt.head.ax[7] == SYS_RT_SIGACTION {
                     if let Some((sigaction, _)) = parse_sigaction(&evt) {
-                        println!("============ sigaction.handler {:#x}", sigaction.handler);
+                        //println!("============ sigaction.handler {:#x}", sigaction.handler);
                         sighand_set.insert(sigaction.handler);
                     }
                 }
@@ -142,6 +144,10 @@ fn parse_file(fname: &str, level: usize) -> Result<()> {
 
     for (id, flow) in events_map.iter() {
         print_events(*id, &flow.events);
+    }
+    println!("Task sequence: ");
+    for tid in task_seq {
+        println!("{:#x}", tid);
     }
     Ok(())
 }

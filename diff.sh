@@ -13,4 +13,5 @@ lktool run $1
 cd -
 cargo run -- -2 ../lkmodel/lk_trace.data | tee lk.output
 
-colordiff ./linux.output ./lk.output
+colordiff -y ./linux.output ./lk.output
+#colordiff ./linux.output ./lk.output
