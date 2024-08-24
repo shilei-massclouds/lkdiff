@@ -123,14 +123,21 @@ impl TraceEvent {
     pub fn handle_syscall(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         match self.head.ax[7] {
             SYS_IOCTL => self.do_common("ioctl", 3),
+            SYS_FCNTL => self.do_common("fcntl", 3),
             SYS_DUP3 => self.do_common("dup3", 3),
             SYS_FACCESSAT => self.do_faccessat(args),
+            SYS_MKDIRAT => self.do_common("mkdirat", 3),
+            SYS_GETCWD => self.do_getcwd(args),
+            SYS_CHDIR => self.do_chdir(args),
+            SYS_FCHMODAT => self.do_common("fchmodat", 4),
+            SYS_FCHOWNAT => self.do_common("fchownat", 5),
             SYS_OPENAT => self.do_openat(args),
             SYS_CLOSE => self.do_common("close", 1),
             SYS_LSEEK => self.do_common("lseek", 3),
             SYS_READ => self.do_read(args),
             SYS_WRITE => self.do_write(args),
             SYS_WRITEV => self.do_common("writev", 3),
+            SYS_UNLINKAT => self.do_unlinkat(args),
             SYS_FSTATAT => self.do_fstatat(args),
             SYS_EXIT_GROUP => self.do_common("exit_group", 1),
             SYS_SET_TID_ADDRESS => self.do_set_tid_address(args),
@@ -138,6 +145,8 @@ impl TraceEvent {
             SYS_CLOCK_GETTIME => self.do_common("clock_gettime", 2),
             SYS_UNAME => self.do_uname(args),
             SYS_BRK => self.do_brk(args),
+            SYS_MOUNT => self.do_common("mount", 5),
+            SYS_MSYNC => self.do_common("msync", 3),
             SYS_MMAP => self.do_mmap(args),
             SYS_MUNMAP => self.do_common("munmap", 2),
             SYS_MPROTECT => self.do_mprotect(args),
@@ -149,8 +158,13 @@ impl TraceEvent {
             SYS_RT_SIGPROCMASK => self.do_rt_sigprocmask(args),
             SYS_CLONE => self.do_clone(args),
             SYS_EXECVE => self.do_execve(args),
-            SYS_GETTID => self.do_common("get_tid", 0),
+            SYS_GETTID => self.do_common("gettid", 0),
+            SYS_GETGID => self.do_common("getgid", 0),
+            SYS_GETEGID => self.do_common("getegid", 0),
             SYS_GETPID => self.do_getpid(args),
+            SYS_GETPPID => self.do_getppid(args),
+            SYS_GETUID => self.do_common("getuid", 0),
+            SYS_GETEUID => self.do_common("geteuid", 0),
             SYS_TGKILL => self.do_common("tgkill", 3),
             SYS_WAIT4 => self.do_wait4(args),
             SYS_GETDENTS64 => self.do_common("getdents64", 3),
@@ -185,6 +199,15 @@ impl TraceEvent {
             format!("{:#x}", self.result)
         };
         ("getpid", 0, result)
+    }
+
+    fn do_getppid(&self, _args: &mut Vec<String>) -> (&'static str, usize, String) {
+        let result = if self.level == 2 {
+            self.mask_tid(self.result)
+        } else {
+            format!("{:#x}", self.result)
+        };
+        ("getppid", 0, result)
     }
 
     fn do_wait4(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
@@ -226,11 +249,11 @@ impl TraceEvent {
         }
     }
 
-    fn do_path(&self, args: &mut Vec<String>) {
+    fn do_path(&self, args: &mut Vec<String>, index: usize) {
         assert!(self.payloads.len() >= 1);
         let payload = &self.payloads.first().unwrap();
         //assert_eq!(payload.inout, crate::IN);
-        assert_eq!(payload.index, 1);
+        assert_eq!(payload.index, index);
         let fname = CStr::from_bytes_until_nul(&payload.data).unwrap();
         let fname = match fname.to_str() {
             Ok(name) => {
@@ -245,25 +268,43 @@ impl TraceEvent {
         if self.head.ax[0] == AT_FDCWD {
             args[0] = "AT_FDCWD".to_string();
         }
-        self.do_path(args);
+        self.do_path(args, 1);
         self.do_common("openat", 4)
+    }
+
+    fn do_getcwd(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        self.do_path(args, 0);
+        self.do_common("getcwd", 2)
+    }
+
+    fn do_chdir(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        self.do_path(args, 0);
+        self.do_common("chdir", 1)
     }
 
     fn do_faccessat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         if self.head.ax[0] == AT_FDCWD {
             args[0] = "AT_FDCWD".to_string();
         }
-        self.do_path(args);
+        self.do_path(args, 1);
         // For faccessat, there're 3 args, NO 'flags'.
         // For faccessat2, there're 4 args with 'flags'.
         self.do_common("faccessat", 3)
+    }
+
+    fn do_unlinkat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
+        if self.head.ax[0] == AT_FDCWD {
+            args[0] = "AT_FDCWD".to_string();
+        }
+        self.do_path(args, 1);
+        self.do_common("unlinkat", 3)
     }
 
     fn do_fstatat(&self, args: &mut Vec<String>) -> (&'static str, usize, String) {
         if self.head.ax[0] == AT_FDCWD {
             args[0] = "AT_FDCWD".to_string();
         }
-        self.do_path(args);
+        self.do_path(args, 1);
         if self.result == 0 {
             assert_eq!(self.payloads.len(), 2);
             for payload in &self.payloads {
