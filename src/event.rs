@@ -134,6 +134,7 @@ impl TraceEvent {
             SYS_OPENAT => self.do_openat(args),
             SYS_CLOSE => self.do_common("close", 1),
             SYS_LSEEK => self.do_common("lseek", 3),
+            SYS_SENDFILE => self.do_common("sendfile", 4),
             SYS_READ => self.do_read(args),
             SYS_WRITE => self.do_write(args),
             SYS_WRITEV => self.do_common("writev", 3),

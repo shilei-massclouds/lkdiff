@@ -23,6 +23,7 @@ pub const SYS_READ: u64 = 0x3f;
 pub const SYS_WRITE: u64 = 0x40;
 pub const SYS_WRITEV: u64 = 0x42;
 pub const SYS_PREAD64: u64 = 0x43;
+pub const SYS_SENDFILE: u64 = 0x47;
 pub const SYS_READLINKAT: u64 = 0x4e;
 pub const SYS_FSTATAT: u64 = 0x4f;
 pub const SYS_CAPGET: u64 = 0x5a;
